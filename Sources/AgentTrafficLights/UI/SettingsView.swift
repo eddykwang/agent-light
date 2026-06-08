@@ -621,7 +621,7 @@ struct SettingsView: View {
         case let (.some(version), .none):
             return version
         default:
-            return "0.1.0"
+            return "0.1.1"
         }
     }
 

@@ -170,14 +170,14 @@ early release builds.
 Create a local release zip:
 
 ```bash
-./script/package_release.sh v0.1.0
+./script/package_release.sh v0.1.1
 ```
 
 Tagging a version also publishes the unsigned zip through GitHub Actions:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ## Run Locally

@@ -8,15 +8,17 @@ final class StatusBarController: NSObject, NSWindowDelegate {
     private let statusItem: NSStatusItem
     private let store: StatusStore
     private let settings: AppSettings
+    private let updateChecker: UpdateChecker
     private let openAction = OpenCodexAction()
     private var panel: NSPanel?
     private var settingsWindowController: NSWindowController?
     private var onboardingWindowController: NSWindowController?
     private var cancellables: Set<AnyCancellable> = []
 
-    init(store: StatusStore, settings: AppSettings) {
+    init(store: StatusStore, settings: AppSettings, updateChecker: UpdateChecker) {
         self.store = store
         self.settings = settings
+        self.updateChecker = updateChecker
         self.statusItem = NSStatusBar.system.statusItem(withLength: Self.menuBarLength(for: settings.orientation))
         super.init()
 
@@ -82,12 +84,20 @@ final class StatusBarController: NSObject, NSWindowDelegate {
                 self?.refreshPanelContent()
             }
             .store(in: &cancellables)
+
+        updateChecker.$state
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshPanelContent()
+            }
+            .store(in: &cancellables)
     }
 
     private var panelView: StatusPanelView {
         StatusPanelView(
             store: store,
             settings: settings,
+            updateChecker: updateChecker,
             width: preferredPanelWidth(),
             openThread: { [weak self] session in
                 self?.closePanel()
@@ -100,6 +110,15 @@ final class StatusBarController: NSObject, NSWindowDelegate {
             copyText: { text in
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
+            },
+            viewRelease: { [weak self] update in
+                self?.closePanel()
+                NSWorkspace.shared.open(update.pageURL)
+            },
+            checkForUpdates: { [weak self] in
+                Task { @MainActor in
+                    await self?.updateChecker.checkIfNeeded(force: true)
+                }
             },
             showClaudeCodeSettings: { [weak self] in
                 self?.closePanel()
@@ -182,7 +201,8 @@ final class StatusBarController: NSObject, NSWindowDelegate {
 
     private func currentPanelSize() -> NSSize {
         let sessionCount = max(store.visibleSessions.count, 1)
-        let height = min(max(CGFloat(118 + sessionCount * 58 + 150), 300), 580)
+        let updateHeight: CGFloat = updateChecker.availableUpdate == nil ? 0 : 58
+        let height = min(max(CGFloat(118 + sessionCount * 58 + 182) + updateHeight, 300), 580)
         return NSSize(width: preferredPanelWidth(), height: height)
     }
 
@@ -241,6 +261,10 @@ final class StatusBarController: NSObject, NSWindowDelegate {
             + textWidth(Self.claudeCodeModeLabel(settings: settings), size: 11, weight: .medium)
             + 112
         width = max(width, claudeModeWidth)
+
+        if let update = updateChecker.availableUpdate {
+            width = max(width, textWidth("Agent Light \(update.version) is available", size: 12, weight: .semibold) + 122)
+        }
 
         for session in store.visibleSessions {
             let textColumnWidth = max(
@@ -331,10 +355,13 @@ private final class StatusPanel: NSPanel {
 private struct StatusPanelView: View {
     @ObservedObject var store: StatusStore
     @ObservedObject var settings: AppSettings
+    @ObservedObject var updateChecker: UpdateChecker
     let width: CGFloat
     let openThread: (AgentSession) -> Void
     let openFolder: (AgentSession) -> Void
     let copyText: (String) -> Void
+    let viewRelease: (AppUpdate) -> Void
+    let checkForUpdates: () -> Void
     let showClaudeCodeSettings: () -> Void
     let showOnboarding: () -> Void
     let showSettings: () -> Void
@@ -387,6 +414,19 @@ private struct StatusPanelView: View {
                 icon: TrafficLightIconRenderer.image(status: store.aggregateStatus, orientation: settings.orientation)
             )
 
+            if let update = updateChecker.availableUpdate {
+                UpdateAvailablePopoverRow(
+                    update: update,
+                    action: {
+                        viewRelease(update)
+                    }
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+
+                Divider()
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Text(store.visibleSessions.isEmpty ? store.message : sessionCountText)
                     .font(.system(size: 13, weight: .medium))
@@ -415,6 +455,7 @@ private struct StatusPanelView: View {
                     action: showClaudeCodeSettings
                 )
                 CommandPopoverRow(title: "Getting Started...", symbolName: "sparkles", action: showOnboarding)
+                CommandPopoverRow(title: updateCheckTitle, symbolName: "arrow.clockwise", action: checkForUpdates)
                 CommandPopoverRow(title: "Settings...", symbolName: "gearshape", action: showSettings)
             }
             .padding(.horizontal, 9)
@@ -436,6 +477,19 @@ private struct StatusPanelView: View {
     private var selectedSession: AgentSession? {
         guard let selectedSessionID else { return nil }
         return store.visibleSessions.first { $0.id == selectedSessionID }
+    }
+
+    private var updateCheckTitle: String {
+        switch updateChecker.state {
+        case .checking:
+            return "Checking for Updates..."
+        case .upToDate:
+            return "Up to Date"
+        case .failed:
+            return "Update Check Failed"
+        case .idle, .updateAvailable:
+            return "Check for Updates..."
+        }
     }
 }
 
@@ -482,6 +536,59 @@ private struct PopoverHeaderRow: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 42)
+    }
+}
+
+private struct UpdateAvailablePopoverRow: View {
+    let update: AppUpdate
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 26, height: 26)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Agent Light \(update.version) is available")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text("You are running \(update.currentVersion)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 10)
+
+                Text("View")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 9)
+                    .frame(height: 22)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 46)
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovering ? Color.accentColor.opacity(0.12) : Color.accentColor.opacity(0.06))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 }
 

@@ -8,6 +8,9 @@ final class ClaudeCodeHookSourceTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
+        let workspace = root.appendingPathComponent("demo")
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let transcript = workspace.appendingPathComponent("abc123.jsonl")
         let event = root.appendingPathComponent("abc123.json")
         let json = """
         {
@@ -15,24 +18,27 @@ final class ClaudeCodeHookSourceTests: XCTestCase {
           "sessionId": "abc123",
           "status": "needsInput",
           "detail": "Claude Code needs permission",
-          "workspacePath": "/tmp/demo",
-          "transcriptPath": "/tmp/demo/abc123.jsonl",
+          "workspacePath": "\(workspace.path)",
+          "transcriptPath": "\(transcript.path)",
           "updatedAt": "2026-06-07T17:00:00Z"
         }
         """
         try json.write(to: event, atomically: true, encoding: .utf8)
 
-        let source = ClaudeCodeHookSource(eventsRoot: root.path)
+        let source = ClaudeCodeHookSource(
+            eventsRoot: root.path,
+            now: { Date(timeIntervalSince1970: 1_780_851_700) }
+        )
         let sessions = try source.currentSessions()
 
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions.first?.id, "claude-code:abc123")
         XCTAssertEqual(sessions.first?.provider, "claude-code")
         XCTAssertEqual(sessions.first?.projectName, "demo")
-        XCTAssertEqual(sessions.first?.workspacePath, "/tmp/demo")
+        XCTAssertEqual(sessions.first?.workspacePath, workspace.path)
         XCTAssertEqual(sessions.first?.status, .needsInput)
         XCTAssertEqual(sessions.first?.detail, "Claude Code needs permission")
-        XCTAssertEqual(sessions.first?.threadURL, URL(fileURLWithPath: "/tmp/demo/abc123.jsonl"))
+        XCTAssertEqual(sessions.first?.threadURL, transcript)
     }
 
     func testPrunesOrphanedSignalFiles() throws {

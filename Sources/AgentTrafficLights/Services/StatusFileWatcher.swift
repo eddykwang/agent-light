@@ -7,11 +7,14 @@ final class StatusFileWatcher {
     func start(pathProvider: @escaping () -> String, interval: TimeInterval = 1.0, onTick: @escaping (String) -> Void) {
         stop()
         onTick(pathProvider())
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { _ in
             Task { @MainActor in
                 onTick(pathProvider())
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        RunLoop.main.add(timer, forMode: .eventTracking)
+        self.timer = timer
     }
 
     func stop() {

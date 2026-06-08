@@ -20,6 +20,7 @@ one of them finished, failed, or is still busy.
 
 ## Table of Contents
 
+- [Install](#install)
 - [Screenshots](#screenshots)
 - [Features](#features)
 - [Status Colors](#status-colors)
@@ -33,6 +34,22 @@ one of them finished, failed, or is still busy.
 - [Limitations](#limitations)
 - [Repository Notes](#repository-notes)
 - [License](#license)
+
+## Install
+
+With Homebrew:
+
+```bash
+brew tap eddykwang/tap
+brew install --cask agent-light
+```
+
+Or download the latest zip from
+[GitHub Releases](https://github.com/eddykwang/agent-light/releases/latest),
+unzip it, and move `Agent Light.app` to `/Applications`.
+
+Current release builds are unsigned and not notarized, so macOS may show an
+unidentified developer warning the first time you open the app.
 
 ## Screenshots
 

@@ -1,0 +1,21 @@
+# Local agent/runtime state
+.agents/
+.claude/
+.codex/
+.superpowers/
+CLAUDE.md
+docs/superpowers/
+fixtures/transcripts/
+
+# Build artifacts
+.build/
+.swiftpm/
+dist/
+
+# Local secrets and logs
+.env
+.env.*
+*.log
+
+# macOS noise
+.DS_Store

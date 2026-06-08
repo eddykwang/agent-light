@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-run}"
+PRODUCT_NAME="Agent Light"
+EXECUTABLE_NAME="AgentTrafficLights"
+BUNDLE_ID="com.agenttrafficlights.AgentTrafficLights"
+MIN_SYSTEM_VERSION="14.0"
+APP_VERSION="0.1.0"
+APP_BUILD="1"
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIST_DIR="$ROOT_DIR/dist"
+APP_BUNDLE="$DIST_DIR/$PRODUCT_NAME.app"
+APP_CONTENTS="$APP_BUNDLE/Contents"
+APP_MACOS="$APP_CONTENTS/MacOS"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_BINARY="$APP_MACOS/$EXECUTABLE_NAME"
+APP_ICON="$ROOT_DIR/Resources/AppIcon.icns"
+INFO_PLIST="$APP_CONTENTS/Info.plist"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+pkill -x "$EXECUTABLE_NAME" >/dev/null 2>&1 || true
+pkill -x "AgentStatusCollector" >/dev/null 2>&1 || true
+
+swift build
+BUILD_BINARY="$(swift build --show-bin-path)/$EXECUTABLE_NAME"
+COLLECTOR_BINARY="$(swift build --show-bin-path)/AgentStatusCollector"
+CLAUDE_HOOK_BINARY="$(swift build --show-bin-path)/AgentClaudeHook"
+
+rm -rf "$APP_BUNDLE"
+mkdir -p "$APP_MACOS"
+mkdir -p "$APP_RESOURCES"
+cp "$BUILD_BINARY" "$APP_BINARY"
+chmod +x "$APP_BINARY"
+cp "$COLLECTOR_BINARY" "$APP_MACOS/AgentStatusCollector"
+chmod +x "$APP_MACOS/AgentStatusCollector"
+cp "$CLAUDE_HOOK_BINARY" "$APP_MACOS/AgentClaudeHook"
+chmod +x "$APP_MACOS/AgentClaudeHook"
+cp "$APP_ICON" "$APP_RESOURCES/AppIcon.icns"
+cp -R "$ROOT_DIR/Resources/ProviderIcons" "$APP_RESOURCES/ProviderIcons"
+
+cat >"$INFO_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>$EXECUTABLE_NAME</string>
+  <key>CFBundleIdentifier</key>
+  <string>$BUNDLE_ID</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleName</key>
+  <string>$PRODUCT_NAME</string>
+  <key>CFBundleDisplayName</key>
+  <string>$PRODUCT_NAME</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_BUILD</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>$MIN_SYSTEM_VERSION</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+</dict>
+</plist>
+PLIST
+
+codesign --force --deep --sign - "$APP_BUNDLE"
+
+if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -f "$APP_BUNDLE"
+fi
+
+open_app() {
+  /usr/bin/open -n "$APP_BUNDLE"
+}
+
+case "$MODE" in
+  run)
+    open_app
+    ;;
+  --debug|debug)
+    lldb -- "$APP_BINARY"
+    ;;
+  --logs|logs)
+    open_app
+    /usr/bin/log stream --info --style compact --predicate "process == \"$EXECUTABLE_NAME\""
+    ;;
+  --telemetry|telemetry)
+    open_app
+    /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
+    ;;
+  --verify|verify)
+    open_app
+    sleep 1
+    pgrep -x "$EXECUTABLE_NAME" >/dev/null
+    ;;
+  *)
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    exit 2
+    ;;
+esac

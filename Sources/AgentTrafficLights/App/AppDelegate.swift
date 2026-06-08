@@ -23,9 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.$aggregateStatus
             .sink { [weak controller] _ in
-                Task { @MainActor in
-                    controller?.updateIcon()
-                }
+                controller?.updateIcon()
             }
             .store(in: &cancellables)
 

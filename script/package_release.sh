@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION_INPUT="${1:-${GITHUB_REF_NAME:-0.1.1}}"
+VERSION_INPUT="${1:-${GITHUB_REF_NAME:-0.1.2}}"
 VERSION="${VERSION_INPUT#v}"
 BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
 

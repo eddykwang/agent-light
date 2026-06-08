@@ -53,14 +53,9 @@ unidentified developer warning the first time you open the app.
 
 ## Screenshots
 
-> Screenshot placeholder: menu bar status popover.
-> Suggested file: `docs/assets/menu-status.png`
-
-> Screenshot placeholder: settings window.
-> Suggested file: `docs/assets/settings.png`
-
-> Screenshot placeholder: macOS menu bar icon in context.
-> Suggested file: `docs/assets/menu-bar-icon.png`
+<p align="center">
+  <img src="docs/assets/agent-light-demo.gif" alt="Agent Light menu bar status demo" width="720">
+</p>
 
 ## Features
 
@@ -170,14 +165,14 @@ early release builds.
 Create a local release zip:
 
 ```bash
-./script/package_release.sh v0.1.1
+./script/package_release.sh v0.1.2
 ```
 
 Tagging a version also publishes the unsigned zip through GitHub Actions:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 ## Run Locally

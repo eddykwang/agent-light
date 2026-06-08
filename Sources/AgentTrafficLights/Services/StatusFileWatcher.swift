@@ -8,9 +8,7 @@ final class StatusFileWatcher {
         stop()
         onTick(pathProvider())
         let timer = Timer(timeInterval: interval, repeats: true) { _ in
-            Task { @MainActor in
-                onTick(pathProvider())
-            }
+            onTick(pathProvider())
         }
         RunLoop.main.add(timer, forMode: .common)
         RunLoop.main.add(timer, forMode: .eventTracking)

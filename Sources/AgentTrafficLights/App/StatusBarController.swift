@@ -4,16 +4,14 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class StatusBarController: NSObject, NSMenuDelegate {
+final class StatusBarController: NSObject, NSWindowDelegate {
     private let statusItem: NSStatusItem
-    private let menu = NSMenu()
     private let store: StatusStore
     private let settings: AppSettings
     private let openAction = OpenCodexAction()
+    private var panel: NSPanel?
     private var settingsWindowController: NSWindowController?
     private var onboardingWindowController: NSWindowController?
-    private var isMenuOpen = false
-    private var menuRefreshTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
     init(store: StatusStore, settings: AppSettings) {
@@ -23,7 +21,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         super.init()
 
         configureStatusItem()
-        observeMenuContentChanges()
+        observePanelContentChanges()
         updateIcon()
     }
 
@@ -49,25 +47,16 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func configureStatusItem() {
-        menu.delegate = self
-        statusItem.menu = menu
+        guard let button = statusItem.button else {
+            return
+        }
+
+        button.target = self
+        button.action = #selector(togglePanel)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        rebuildMenu()
-    }
-
-    func menuWillOpen(_ menu: NSMenu) {
-        isMenuOpen = true
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        isMenuOpen = false
-        menuRefreshTask?.cancel()
-        menuRefreshTask = nil
-    }
-
-    private func observeMenuContentChanges() {
+    private func observePanelContentChanges() {
         Publishers.CombineLatest4(
             store.$aggregateStatus,
             store.$visibleSessions,
@@ -76,146 +65,143 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         )
         .dropFirst()
         .sink { [weak self] _ in
-            Task { @MainActor in
-                self?.scheduleMenuRefreshIfOpen()
-            }
+            self?.refreshPanelContent()
         }
         .store(in: &cancellables)
 
         settings.$claudeCodeStatusMode
             .dropFirst()
             .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.scheduleMenuRefreshIfOpen()
-                }
+                self?.refreshPanelContent()
             }
             .store(in: &cancellables)
 
         settings.$orientation
             .dropFirst()
             .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.scheduleMenuRefreshIfOpen()
-                }
+                self?.refreshPanelContent()
             }
             .store(in: &cancellables)
     }
 
-    private func scheduleMenuRefreshIfOpen() {
-        guard isMenuOpen else {
+    private var panelView: StatusPanelView {
+        StatusPanelView(
+            store: store,
+            settings: settings,
+            width: preferredPanelWidth(),
+            openSession: { [weak self] session in
+                self?.closePanel()
+                self?.openAction.open(session)
+            },
+            showClaudeCodeSettings: { [weak self] in
+                self?.closePanel()
+                self?.showSettings(selectedTab: .claudeCode)
+            },
+            showOnboarding: { [weak self] in
+                self?.closePanel()
+                self?.showOnboarding()
+            },
+            showSettings: { [weak self] in
+                self?.closePanel()
+                self?.showSettings()
+            },
+            quit: {
+                NSApp.terminate(nil)
+            }
+        )
+    }
+
+    private func refreshPanelContent() {
+        if let controller = panel?.contentViewController as? NSHostingController<StatusPanelView> {
+            controller.rootView = panelView
+        }
+        refreshPanelSize()
+    }
+
+    private func refreshPanelSize() {
+        guard let panel else { return }
+        let size = currentPanelSize()
+        var frame = panel.frame
+        let oldMaxY = frame.maxY
+        frame.size = size
+        frame.origin.y = oldMaxY - size.height
+        panel.setFrame(frame, display: true)
+    }
+
+    @objc private func togglePanel() {
+        if panel?.isVisible == true {
+            closePanel()
+        } else {
+            showPanel()
+        }
+    }
+
+    private func showPanel() {
+        guard let button = statusItem.button else {
             return
         }
 
-        menuRefreshTask?.cancel()
-        menuRefreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 80_000_000)
-            guard let self, !Task.isCancelled, self.isMenuOpen else {
-                return
-            }
-
-            self.rebuildMenu()
+        let panel = panel ?? makePanel()
+        self.panel = panel
+        if let controller = panel.contentViewController as? NSHostingController<StatusPanelView> {
+            controller.rootView = panelView
         }
+        let size = currentPanelSize()
+        panel.setContentSize(size)
+        panel.setFrameOrigin(panelOrigin(size: size, relativeTo: button))
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func rebuildMenu() {
-        let contentWidth = preferredMenuWidth()
-
-        menu.removeAllItems()
-        menu.addItem(headerItem(width: contentWidth))
-        menu.addItem(sessionCountItem())
-
-        if !store.visibleSessions.isEmpty {
-            menu.addItem(.separator())
-            store.visibleSessions.forEach { session in
-                menu.addItem(sessionItem(for: session, width: contentWidth))
-            }
-        }
-
-        menu.addItem(.separator())
-        menu.addItem(claudeCodeModeItem(width: contentWidth))
-
-        let onboardingItem = NSMenuItem(title: "Getting Started...", action: #selector(showOnboardingFromMenu), keyEquivalent: "")
-        onboardingItem.target = self
-        onboardingItem.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Getting Started")
-        menu.addItem(onboardingItem)
-
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
-        settingsItem.target = self
-        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
-        menu.addItem(settingsItem)
-
-        menu.addItem(.separator())
-
-        let quitItem = NSMenuItem(title: "Quit Agent Light", action: #selector(quitFromMenu), keyEquivalent: "q")
-        quitItem.target = self
-        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
-        menu.addItem(quitItem)
-    }
-
-    private func headerItem(width: CGFloat) -> NSMenuItem {
-        let item = NSMenuItem()
-        let row = MenuHeaderRowView(
-            statusText: "Agents are \(store.aggregateStatus.displayName.lowercased())",
-            updatedText: lastUpdatedText,
-            icon: TrafficLightIconRenderer.image(status: store.aggregateStatus, orientation: settings.orientation),
-            width: width
+    private func makePanel() -> NSPanel {
+        let panel = StatusPanel(
+            contentRect: NSRect(origin: .zero, size: currentPanelSize()),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
         )
-        let hostingView = NSHostingView(rootView: row)
-        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: 36)
-        item.view = hostingView
-        return item
+        panel.delegate = self
+        panel.contentViewController = NSHostingController(rootView: panelView)
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = true
+        panel.isReleasedWhenClosed = false
+        return panel
     }
 
-    private func sessionCountItem() -> NSMenuItem {
-        let count = store.visibleSessions.count
-        let title = count == 1 ? "1 agent session" : "\(count) agent sessions"
-        let item = NSMenuItem(title: count > 0 ? title : store.message, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
+    private func currentPanelSize() -> NSSize {
+        let sessionCount = max(store.visibleSessions.count, 1)
+        let height = min(max(CGFloat(118 + sessionCount * 58 + 150), 300), 580)
+        return NSSize(width: preferredPanelWidth(), height: height)
     }
 
-    private func sessionItem(for session: AgentSession, width: CGFloat) -> NSMenuItem {
-        let detail = session.detail ?? session.status.displayName
-        let canOpen = openAction.canOpen(session)
-        let item = NSMenuItem()
-        let row = SessionMenuRowView(
-            projectName: session.projectName,
-            detail: detail,
-            providerIcon: ProviderIconRenderer.image(provider: session.provider, size: NSSize(width: 20, height: 20)),
-            status: session.status,
-            canOpen: canOpen,
-            width: width
-        ) { [weak self] in
-            guard let self, canOpen else {
-                return
-            }
-
-            self.menu.cancelTracking()
-            self.openAction.open(session)
+    private func panelOrigin(size: NSSize, relativeTo button: NSStatusBarButton) -> NSPoint {
+        guard let window = button.window else {
+            return .zero
         }
-        let hostingView = NSHostingView(rootView: row)
-        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: 54)
-        item.view = hostingView
-        return item
+
+        let buttonFrame = button.convert(button.bounds, to: nil)
+        let screenFrame = window.convertToScreen(buttonFrame)
+        let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let margin: CGFloat = 6
+        var x = screenFrame.midX - size.width / 2
+        x = min(max(x, screen.minX + margin), screen.maxX - size.width - margin)
+        let y = screenFrame.minY - size.height - 6
+        return NSPoint(x: x, y: max(y, screen.minY + margin))
     }
 
-    private func claudeCodeModeItem(width: CGFloat) -> NSMenuItem {
-        let item = NSMenuItem()
-        let row = ClaudeCodeModeRowView(
-            modeLabel: claudeCodeModeLabel,
-            providerIcon: providerIconImage(provider: "claude-code"),
-            width: width
-        ) { [weak self] in
-            self?.menu.cancelTracking()
-            self?.showSettings(selectedTab: .claudeCode)
-        }
-        let hostingView = NSHostingView(rootView: row)
-        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: 40)
-        item.view = hostingView
-        return item
+    private func closePanel() {
+        panel?.orderOut(nil)
     }
 
-    private var claudeCodeModeLabel: String {
+    func windowDidResignKey(_ notification: Notification) {
+        closePanel()
+    }
+
+    static func claudeCodeModeLabel(settings: AppSettings) -> String {
         switch settings.claudeCodeStatusMode {
         case .automatic:
             return "Transcript"
@@ -224,40 +210,37 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
     }
 
-    private var lastUpdatedText: String {
-        guard let lastUpdated = store.lastUpdated else {
+    static func lastUpdatedText(_ lastUpdated: Date?) -> String {
+        guard let lastUpdated else {
             return "No update yet"
         }
 
         return "Updated \(lastUpdated.formatted(date: .omitted, time: .shortened))"
     }
 
-    private func providerIconImage(provider: String) -> NSImage {
+    static func providerIconImage(provider: String) -> NSImage {
         ProviderIconRenderer.image(provider: provider, size: NSSize(width: 15, height: 15), tint: .secondaryLabelColor)
     }
 
-    private func preferredMenuWidth() -> CGFloat {
-        let minimumWidth: CGFloat = 340
-        let maximumWidth: CGFloat = 460
-        var width: CGFloat = textWidth("Agents are \(store.aggregateStatus.displayName.lowercased())", size: 13, weight: .semibold)
-            + textWidth(lastUpdatedText, size: 12, weight: .medium)
-            + 94
+    private func preferredPanelWidth() -> CGFloat {
+        let minimumWidth: CGFloat = 318
+        let maximumWidth: CGFloat = 420
+        var width = textWidth("Agents are \(store.aggregateStatus.displayName.lowercased())", size: 14, weight: .semibold)
+            + textWidth(Self.lastUpdatedText(store.lastUpdated), size: 12, weight: .medium)
+            + 92
 
-        width = max(
-            width,
-            textWidth("Claude Code mode", size: 13, weight: .medium)
-                + textWidth(claudeCodeModeLabel, size: 11, weight: .medium)
-                + 116
-        )
+        let claudeModeWidth = textWidth("Claude Code mode", size: 13, weight: .medium)
+            + textWidth(Self.claudeCodeModeLabel(settings: settings), size: 11, weight: .medium)
+            + 112
+        width = max(width, claudeModeWidth)
 
         for session in store.visibleSessions {
-            let detail = session.detail ?? session.status.displayName
             let textColumnWidth = max(
                 textWidth(session.projectName, size: 13, weight: .semibold),
-                textWidth(detail, size: 12, weight: .regular)
+                textWidth(session.detail ?? session.status.displayName, size: 12, weight: .regular)
             )
             let badgeWidth = textWidth(session.status.displayName, size: 11, weight: .medium) + 44
-            width = max(width, textColumnWidth + badgeWidth + 93)
+            width = max(width, textColumnWidth + badgeWidth + 108)
         }
 
         return min(max(ceil(width), minimumWidth), maximumWidth)
@@ -268,19 +251,11 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
-    @objc private func showSettingsFromMenu() {
-        showSettings()
-    }
-
     func showOnboardingIfNeeded() {
         guard !settings.hasCompletedOnboarding else {
             return
         }
 
-        showOnboarding()
-    }
-
-    @objc private func showOnboardingFromMenu() {
         showOnboarding()
     }
 
@@ -315,14 +290,6 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func showClaudeCodeSettingsFromMenu() {
-        showSettings(selectedTab: .claudeCode)
-    }
-
-    @objc private func quitFromMenu() {
-        NSApp.terminate(nil)
-    }
-
     private func showSettings(selectedTab: SettingsTab = .general) {
         if settingsWindowController == nil {
             let controller = NSHostingController(rootView: SettingsView(settings: settings, selectedTab: selectedTab))
@@ -348,11 +315,104 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 }
 
-private struct MenuHeaderRowView: View {
+private final class StatusPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+private struct StatusPanelView: View {
+    @ObservedObject var store: StatusStore
+    @ObservedObject var settings: AppSettings
+    let width: CGFloat
+    let openSession: (AgentSession) -> Void
+    let showClaudeCodeSettings: () -> Void
+    let showOnboarding: () -> Void
+    let showSettings: () -> Void
+    let quit: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            PopoverHeaderRow(
+                statusText: "Agents are \(store.aggregateStatus.displayName.lowercased())",
+                updatedText: StatusBarController.lastUpdatedText(store.lastUpdated),
+                icon: TrafficLightIconRenderer.image(status: store.aggregateStatus, orientation: settings.orientation)
+            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(store.visibleSessions.isEmpty ? store.message : sessionCountText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+
+                if !store.visibleSessions.isEmpty {
+                    ForEach(store.visibleSessions, id: \.id) { session in
+                        SessionPopoverRow(
+                            session: session,
+                            canOpen: OpenCodexAction().canOpen(session),
+                            action: {
+                                openSession(session)
+                            }
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            VStack(spacing: 4) {
+                ClaudeCodeModePopoverRow(
+                    modeLabel: StatusBarController.claudeCodeModeLabel(settings: settings),
+                    action: showClaudeCodeSettings
+                )
+                CommandPopoverRow(title: "Getting Started...", symbolName: "sparkles", action: showOnboarding)
+                CommandPopoverRow(title: "Settings...", symbolName: "gearshape", action: showSettings)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+
+            Divider()
+
+            CommandPopoverRow(title: "Quit Agent Light", symbolName: "power", action: quit)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 7)
+        }
+        .frame(width: width)
+        .background(MenuMaterialView())
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+    }
+
+    private var sessionCountText: String {
+        let count = store.visibleSessions.count
+        return count == 1 ? "1 agent session" : "\(count) agent sessions"
+    }
+}
+
+private struct MenuMaterialView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .menu
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = .menu
+        nsView.blendingMode = .behindWindow
+        nsView.state = .active
+    }
+}
+
+private struct PopoverHeaderRow: View {
     let statusText: String
     let updatedText: String
     let icon: NSImage
-    let width: CGFloat
 
     var body: some View {
         HStack(spacing: 9) {
@@ -363,29 +423,25 @@ private struct MenuHeaderRowView: View {
                 .frame(width: 24, height: 18)
 
             Text(statusText)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary.opacity(0.44))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary.opacity(0.58))
                 .lineLimit(1)
 
-            Spacer(minLength: 14)
+            Spacer(minLength: 12)
 
             Text(updatedText)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary.opacity(0.72))
+                .foregroundStyle(.secondary.opacity(0.82))
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .frame(width: width, height: 36)
+        .padding(.horizontal, 12)
+        .frame(height: 42)
     }
 }
 
-private struct SessionMenuRowView: View {
-    let projectName: String
-    let detail: String
-    let providerIcon: NSImage
-    let status: AgentStatus
+private struct SessionPopoverRow: View {
+    let session: AgentSession
     let canOpen: Bool
-    let width: CGFloat
     let action: () -> Void
 
     @State private var isHovering = false
@@ -397,19 +453,19 @@ private struct SessionMenuRowView: View {
             }
         }) {
             HStack(spacing: 11) {
-                Image(nsImage: providerIcon)
+                Image(nsImage: ProviderIconRenderer.image(provider: session.provider, size: NSSize(width: 20, height: 20)))
                     .resizable()
                     .scaledToFit()
                     .frame(width: 20, height: 20)
                     .frame(width: 26, height: 26)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(projectName)
+                    Text(session.projectName)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
-                    Text(detail)
+                    Text(session.detail ?? session.status.displayName)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -417,10 +473,10 @@ private struct SessionMenuRowView: View {
 
                 Spacer(minLength: 14)
 
-                SessionStatusBadge(status: status)
+                SessionStatusBadge(status: session.status)
             }
-            .padding(.horizontal, 10)
-            .frame(width: width, height: 54)
+            .padding(.horizontal, 7)
+            .frame(height: 50)
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -435,10 +491,8 @@ private struct SessionMenuRowView: View {
     }
 }
 
-private struct ClaudeCodeModeRowView: View {
+private struct ClaudeCodeModePopoverRow: View {
     let modeLabel: String
-    let providerIcon: NSImage
-    let width: CGFloat
     let action: () -> Void
 
     @State private var isHovering = false
@@ -446,7 +500,7 @@ private struct ClaudeCodeModeRowView: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 11) {
-                Image(nsImage: providerIcon)
+                Image(nsImage: StatusBarController.providerIconImage(provider: "claude-code"))
                     .resizable()
                     .scaledToFit()
                     .frame(width: 15, height: 15)
@@ -469,8 +523,45 @@ private struct ClaudeCodeModeRowView: View {
                             .fill(Color.secondary.opacity(0.11))
                     )
             }
-            .padding(.horizontal, 10)
-            .frame(width: width, height: 40)
+            .padding(.horizontal, 7)
+            .frame(height: 36)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isHovering ? Color.accentColor.opacity(0.10) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+    }
+}
+
+private struct CommandPopoverRow: View {
+    let title: String
+    let symbolName: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 26, height: 26)
+
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 32)
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)

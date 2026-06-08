@@ -168,7 +168,7 @@ final class SessionAlertNotifierTests: XCTestCase {
         XCTAssertEqual(posted, ["Codex finished: Newer"])
     }
 
-    func testIndividualCompletionBodyIncludesDetailAndWorkspace() {
+    func testClaudeCodeCompletionWaitsForIdlePrompt() {
         var posted: [(String, String)] = []
         let notifier = SessionAlertNotifier(post: { title, body in posted.append((title, body)) })
         let workspacePath = FileManager.default.homeDirectoryForCurrentUser
@@ -208,8 +208,27 @@ final class SessionAlertNotifierTests: XCTestCase {
             notifyOnAllCompletion: false
         )
 
+        XCTAssertTrue(posted.isEmpty)
+
+        notifier.update(
+            aggregate: .idle,
+            sessions: [
+                session(
+                    id: "garden",
+                    provider: "claude-code",
+                    projectName: "Garden Copilot",
+                    status: .idle,
+                    detail: "Claude Code is waiting for your next prompt",
+                    workspacePath: workspacePath
+                )
+            ],
+            notifyOnAttention: false,
+            notifyOnSessionCompletion: true,
+            notifyOnAllCompletion: false
+        )
+
         XCTAssertEqual(posted.map(\.0), ["Claude Code finished: Garden Copilot"])
-        XCTAssertEqual(posted.map(\.1), ["Last Claude Code turn completed Workspace: ~/Documents/garden-copilot"])
+        XCTAssertEqual(posted.map(\.1), ["Claude Code is waiting for your next prompt Workspace: ~/Documents/garden-copilot"])
     }
 
     func testAttentionNotificationNamesAgentProjectAndReason() {

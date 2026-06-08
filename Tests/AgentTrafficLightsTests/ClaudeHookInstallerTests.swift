@@ -75,7 +75,7 @@ final class ClaudeHookInstallerTests: XCTestCase {
         let notification = try XCTUnwrap(hooks["Notification"] as? [[String: Any]])
 
         let matchers = notification.compactMap { $0["matcher"] as? String }.sorted()
-        XCTAssertEqual(matchers, ["elicitation_dialog", "permission_prompt"])
+        XCTAssertEqual(matchers, ["elicitation_dialog", "idle_prompt", "permission_prompt"])
 
         // Each entry passes its notification type to the binary as a command argument.
         for entry in notification {
@@ -100,7 +100,7 @@ final class ClaudeHookInstallerTests: XCTestCase {
         let object = try readJSONObject(settingsURL)
         let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
         let notification = try XCTUnwrap(hooks["Notification"] as? [[String: Any]])
-        XCTAssertEqual(notification.count, 2, "re-installing must not duplicate Notification entries")
+        XCTAssertEqual(notification.count, 3, "re-installing must not duplicate Notification entries")
     }
 
     private func readJSONObject(_ url: URL) throws -> [String: Any] {

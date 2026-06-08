@@ -343,6 +343,13 @@ struct SettingsView: View {
                         .labelsHidden()
                         .frame(width: 232)
                     }
+
+                    SettingsDivider()
+
+                    SettingsInfoBox(
+                        title: "Claude Code completion",
+                        message: "With hooks enabled, Agent Light waits for Claude Code's idle prompt instead of treating subtask or tool-batch endings as finished."
+                    )
                 }
                 .disabled(!settings.notificationsEnabled)
                 .opacity(settings.notificationsEnabled ? 1 : 0.55)
@@ -621,7 +628,7 @@ struct SettingsView: View {
         case let (.some(version), .none):
             return version
         default:
-            return "0.1.2"
+            return "0.1.3"
         }
     }
 

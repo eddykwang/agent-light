@@ -6,7 +6,7 @@ PRODUCT_NAME="Agent Light"
 EXECUTABLE_NAME="AgentTrafficLights"
 BUNDLE_ID="com.agenttrafficlights.AgentTrafficLights"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="0.1.2"
+APP_VERSION="0.1.3"
 APP_BUILD="1"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

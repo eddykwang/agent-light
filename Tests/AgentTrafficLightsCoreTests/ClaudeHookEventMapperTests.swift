@@ -51,7 +51,7 @@ final class ClaudeHookEventMapperTests: XCTestCase {
 
     func testNotificationWithoutTypeIsNotNeedsInput() {
         // Regression guard: Claude Code does not put notification_type in the payload. A bare
-        // Notification (no matcher arg) must NOT light the red lamp.
+        // Notification (no matcher arg) must not change state.
         let state = ClaudeHookEventMapper.state(
             from: [
                 "session_id": "abc",
@@ -61,8 +61,7 @@ final class ClaudeHookEventMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 100)
         )
 
-        XCTAssertNotEqual(state?.status, .needsInput)
-        XCTAssertEqual(state?.status, .idle)
+        XCTAssertNil(state)
     }
 
     func testNotificationIdlePromptIsIdleNotNeedsInput() {
@@ -78,6 +77,21 @@ final class ClaudeHookEventMapperTests: XCTestCase {
         )
 
         XCTAssertEqual(state?.status, .idle)
+    }
+
+    func testLocalCompletionEventsDoNotChangeMainSessionState() {
+        for eventName in ["SubagentStop", "TaskCompleted", "TeammateIdle"] {
+            let state = ClaudeHookEventMapper.state(
+                from: [
+                    "session_id": "abc",
+                    "cwd": "/tmp/demo",
+                    "hook_event_name": eventName
+                ],
+                now: Date(timeIntervalSince1970: 100)
+            )
+
+            XCTAssertNil(state, "\(eventName) should not mark the main session idle")
+        }
     }
 
     func testNotificationElicitationDialogMapsToNeedsInput() {

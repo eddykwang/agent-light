@@ -121,6 +121,9 @@ public struct LsofLivenessFilter: LivenessFilter {
     private func isAlive(session: RawSession, now: Date, ccWorkingIDs: Set<String>) -> Bool {
         switch session.provider {
         case "claude-code":
+            if session.isEventSignal {
+                return true
+            }
             if session.status == .working {
                 return ccWorkingIDs.contains(session.id)
             }

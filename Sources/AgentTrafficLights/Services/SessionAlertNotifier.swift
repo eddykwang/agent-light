@@ -38,7 +38,7 @@ final class SessionAlertNotifier {
         notifyOnSessionCompletion: Bool,
         notifyOnAllCompletion: Bool
     ) {
-        let didFinish = lastAggregateStatus == .working && status == .idle
+        let didFinish = shouldPostAllCompletion(aggregateStatus: status, sessions: sessions)
 
         if notifyOnSessionCompletion {
             postFinishedSessions(sessions, aggregateStatus: status)
@@ -57,7 +57,7 @@ final class SessionAlertNotifier {
         let currentSessionsByID = sessionsByID(sessions)
 
         for session in sessions {
-            guard lastSessionsByID[session.id]?.status == .working, session.status == .idle else {
+            guard shouldPostCompletion(for: session, previous: lastSessionsByID[session.id]) else {
                 continue
             }
             post(completionTitle(for: session), completionBody(for: session))
@@ -68,10 +68,43 @@ final class SessionAlertNotifier {
         }
 
         for previousSession in lastSessionsByID.values {
-            guard previousSession.status == .working, currentSessionsByID[previousSession.id] == nil else {
+            guard previousSession.provider != "claude-code",
+                  previousSession.status == .working,
+                  currentSessionsByID[previousSession.id] == nil else {
                 continue
             }
             post(completionTitle(for: previousSession), disappearedCompletionBody(for: previousSession))
+        }
+    }
+
+    private func shouldPostCompletion(for session: AgentSession, previous: AgentSession?) -> Bool {
+        guard let previous else {
+            return false
+        }
+
+        if session.provider == "claude-code" {
+            return session.status == .idle
+                && isClaudeIdlePrompt(session)
+                && !isClaudeIdlePrompt(previous)
+        }
+
+        return previous.status == .working && session.status == .idle
+    }
+
+    private func shouldPostAllCompletion(aggregateStatus status: AgentStatus, sessions: [AgentSession]) -> Bool {
+        guard lastAggregateStatus == .working, status == .idle else {
+            return false
+        }
+
+        let currentSessionsByID = sessionsByID(sessions)
+        for session in sessions where shouldPostCompletion(for: session, previous: lastSessionsByID[session.id]) {
+            return true
+        }
+
+        return lastSessionsByID.values.contains { previousSession in
+            previousSession.provider != "claude-code"
+                && previousSession.status == .working
+                && currentSessionsByID[previousSession.id] == nil
         }
     }
 
@@ -177,6 +210,11 @@ final class SessionAlertNotifier {
             return fallback
         }
         return detail
+    }
+
+    private func isClaudeIdlePrompt(_ session: AgentSession) -> Bool {
+        session.provider == "claude-code"
+            && session.detail == "Claude Code is waiting for your next prompt"
     }
 
     private func workspaceSummary(for session: AgentSession) -> String? {

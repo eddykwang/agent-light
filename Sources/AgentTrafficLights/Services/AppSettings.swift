@@ -37,11 +37,11 @@ enum CompletionNotificationMode: String, Codable, CaseIterable, Identifiable {
     var description: String {
         switch self {
         case .off:
-            return "Do not notify when agents finish."
+            return "Do not send completion notifications."
         case .individual:
-            return "Notify when a single agent finishes."
+            return "Codex: turn completed. Claude Code hooks: waiting for your next prompt."
         case .allAgentsIdle:
-            return "Notify when all visible agents become idle."
+            return "Notify when all visible agents have reached an idle completion state."
         }
     }
 }

@@ -18,11 +18,14 @@ public enum ClaudeHookEventMapper {
             return nil
         }
 
-        let (status, detail) = statusAndDetail(
+        guard let (status, detail) = statusAndDetail(
             eventName: eventName,
             notificationType: notificationType ?? (input["notification_type"] as? String),
             input: input
-        )
+        ) else {
+            return nil
+        }
+
         return ClaudeHookEventState(
             sessionId: sessionId,
             status: status,
@@ -37,7 +40,7 @@ public enum ClaudeHookEventMapper {
         eventName: String,
         notificationType: String?,
         input: [String: Any]
-    ) -> (AgentStatus, String) {
+    ) -> (AgentStatus, String)? {
         switch eventName {
         case "SessionStart":
             return (.idle, "Claude Code session started")
@@ -49,8 +52,10 @@ public enum ClaudeHookEventMapper {
             return (.needsInput, "Claude Code needs permission")
         case "Notification":
             return notificationStatusAndDetail(notificationType: notificationType)
-        case "Stop", "SubagentStop", "TaskCompleted", "TeammateIdle", "SessionEnd":
+        case "Stop", "SessionEnd":
             return (.idle, "Last Claude Code turn completed")
+        case "SubagentStop", "TaskCompleted", "TeammateIdle":
+            return nil
         case "StopFailure":
             return (.failed, "Claude Code stop failed")
         default:
@@ -60,9 +65,9 @@ public enum ClaudeHookEventMapper {
 
     /// Only genuine "blocked, needs you" notification types map to `needsInput`.
     /// `idle_prompt` ("your turn") and informational types (`auth_success`,
-    /// `elicitation_complete`, `elicitation_response`) must NOT light the red lamp —
+    /// `elicitation_complete`, `elicitation_response`) must NOT light the attention lamp —
     /// `idle_prompt` in particular can fire after every response.
-    private static func notificationStatusAndDetail(notificationType: String?) -> (AgentStatus, String) {
+    private static func notificationStatusAndDetail(notificationType: String?) -> (AgentStatus, String)? {
         switch notificationType {
         case "permission_prompt":
             return (.needsInput, "Claude Code needs permission")
@@ -71,8 +76,8 @@ public enum ClaudeHookEventMapper {
         case "idle_prompt":
             return (.idle, "Claude Code is waiting for your next prompt")
         default:
-            // Informational or unknown notification → neutral, never a false red.
-            return (.idle, "Claude Code notification")
+            // Informational or unknown notification → no state change.
+            return nil
         }
     }
 }

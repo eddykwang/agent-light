@@ -3,46 +3,46 @@ import AppKit
 import Foundation
 
 struct OpenCodexAction {
-    var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    var openURL: (URL) -> Void
+    var canOpenApplication: (URL) -> Bool
 
-    func canOpen(_ session: AgentSession) -> Bool {
-        urlToOpen(for: session) != nil
+    init(
+        openURL: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) },
+        canOpenApplication: @escaping (URL) -> Bool = { NSWorkspace.shared.urlForApplication(toOpen: $0) != nil }
+    ) {
+        self.openURL = openURL
+        self.canOpenApplication = canOpenApplication
     }
 
-    func urlToOpen(for session: AgentSession) -> URL? {
-        if session.provider == "claude-code",
-           let workspacePath = session.workspacePath,
-           let directoryURL = safeDirectory(workspacePath) {
-            return directoryURL
-        }
-
-        if let threadURL = session.threadURL, isAllowed(threadURL) {
+    func threadURLToOpen(for session: AgentSession) -> URL? {
+        if let threadURL = session.threadURL,
+           isCodexThreadURL(threadURL),
+           canOpenApplication(threadURL) {
             return threadURL
-        }
-
-        if let workspacePath = session.workspacePath,
-           let directoryURL = safeDirectory(workspacePath) {
-            return directoryURL
         }
 
         return nil
     }
 
-    func open(_ session: AgentSession) {
-        guard let url = urlToOpen(for: session) else { return }
+    func folderURL(for session: AgentSession) -> URL? {
+        guard let workspacePath = session.workspacePath else { return nil }
+        return safeDirectory(workspacePath)
+    }
+
+    func openThread(_ session: AgentSession) {
+        guard let url = threadURLToOpen(for: session) else { return }
 
         openURL(url)
     }
 
-    private func isAllowed(_ url: URL) -> Bool {
-        switch url.scheme {
-        case "codex":
-            return true
-        case "file":
-            return safeDirectory(url.path) != nil
-        default:
-            return false
-        }
+    func openFolder(_ session: AgentSession) {
+        guard let url = folderURL(for: session) else { return }
+
+        openURL(url)
+    }
+
+    private func isCodexThreadURL(_ url: URL) -> Bool {
+        url.scheme == "codex"
     }
 
     private func safeDirectory(_ path: String) -> URL? {

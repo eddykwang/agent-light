@@ -83,6 +83,46 @@ final class LivenessTests: XCTestCase {
         XCTAssertEqual(filter.aliveSessions(from: [session]).map(\.id), ["cc-needs-input"])
     }
 
+    func testClaudeHookSignalStaysAlivePastStaleWindow() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let session = makeSession(id: "cc-hook-needs-input",
+                                  provider: "claude-code",
+                                  workspacePath: "/p",
+                                  fileURL: URL(fileURLWithPath: "/p/hook.json"),
+                                  status: .needsInput,
+                                  updatedAt: now.addingTimeInterval(-900),
+                                  isEventSignal: true)
+        let filter = LsofLivenessFilter(
+            checker: StubChecker(openPaths: [], processCounts: [:]),
+            now: { now },
+            ccActiveStaleAfter: 60,
+            ccStaleAfter: 300,
+            fallbackStaleAfter: 300
+        )
+
+        XCTAssertEqual(filter.aliveSessions(from: [session]).map(\.id), ["cc-hook-needs-input"])
+    }
+
+    func testClaudeHookWorkingSignalStaysAlivePastActiveWindow() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let session = makeSession(id: "cc-hook-working",
+                                  provider: "claude-code",
+                                  workspacePath: "/p",
+                                  fileURL: URL(fileURLWithPath: "/p/hook.json"),
+                                  status: .working,
+                                  updatedAt: now.addingTimeInterval(-900),
+                                  isEventSignal: true)
+        let filter = LsofLivenessFilter(
+            checker: StubChecker(openPaths: [], processCounts: [:]),
+            now: { now },
+            ccActiveStaleAfter: 60,
+            ccStaleAfter: 300,
+            fallbackStaleAfter: 300
+        )
+
+        XCTAssertEqual(filter.aliveSessions(from: [session]).map(\.id), ["cc-hook-working"])
+    }
+
     func testCCWorkingSessionUsesShorterActiveStaleWindow() {
         let now = Date(timeIntervalSince1970: 1_000)
         let session = makeSession(provider: "claude-code",
@@ -174,9 +214,10 @@ final class LivenessTests: XCTestCase {
     }
 
     private func makeSession(id: String, provider: String, workspacePath: String, fileURL: URL,
-                             status: AgentStatus, updatedAt: Date) -> RawSession {
+                             status: AgentStatus, updatedAt: Date, isEventSignal: Bool = false) -> RawSession {
         RawSession(id: id, provider: provider, projectName: "p", workspacePath: workspacePath,
-                   threadURL: nil, fileURL: fileURL, status: status, detail: "d", updatedAt: updatedAt)
+                   threadURL: nil, fileURL: fileURL, status: status, detail: "d", updatedAt: updatedAt,
+                   isEventSignal: isEventSignal)
     }
 }
 

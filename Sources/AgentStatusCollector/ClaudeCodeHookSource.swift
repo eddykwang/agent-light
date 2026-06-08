@@ -32,9 +32,11 @@ public struct ClaudeCodeHookSource: SessionSource {
             .compactMap { file in
                 let fileURL = URL(fileURLWithPath: eventsRoot).appendingPathComponent(file)
                 guard let data = try? Data(contentsOf: fileURL),
-                      let state = try? decoder.decode(ClaudeHookEventState.self, from: data),
-                      !state.sessionId.isEmpty,
-                      !state.workspacePath.isEmpty else {
+                      let state = try? decoder.decode(ClaudeHookEventState.self, from: data) else {
+                    return nil
+                }
+
+                guard !state.sessionId.isEmpty, !state.workspacePath.isEmpty else {
                     return nil
                 }
 
@@ -54,7 +56,8 @@ public struct ClaudeCodeHookSource: SessionSource {
                     fileURL: fileURL,
                     status: state.status,
                     detail: state.detail,
-                    updatedAt: state.updatedAt
+                    updatedAt: state.updatedAt,
+                    isEventSignal: true
                 )
             }
     }

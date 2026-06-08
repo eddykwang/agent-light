@@ -22,18 +22,22 @@ enum ClaudeHookInstaller {
         "Stop",
         "StopFailure",
         "SubagentStart",
-        "SubagentStop",
         "TaskCreated",
-        "TaskCompleted",
-        "TeammateIdle",
         "SessionEnd"
     ]
 
+    private static let deprecatedHookEvents = [
+        "SubagentStop",
+        "TaskCompleted",
+        "TeammateIdle"
+    ]
+
     /// Notification types route via the hook `matcher` (the payload has no notification type).
-    /// We register only the genuine "needs you" types and pass the type to the binary as an arg,
-    /// so it never has to guess from the payload. `idle_prompt` is deliberately omitted — it can
-    /// fire after every response and is not a real attention state.
+    /// We pass the notification type to the binary as an arg so it never has to guess from the
+    /// payload. Completion notifications use `idle_prompt`; permission/input alerts use the
+    /// attention-related matchers.
     private static let notificationMatchers = [
+        "idle_prompt",
         "permission_prompt",
         "elicitation_dialog"
     ]
@@ -43,6 +47,16 @@ enum ClaudeHookInstaller {
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
         let quotedPath = shellQuoted(hookBinaryURL.path)
         let entry = hookEntry(matcher: "", command: quotedPath)
+
+        for event in deprecatedHookEvents {
+            guard let entries = hooks[event] as? [[String: Any]] else { continue }
+            let cleaned = entries.compactMap(removingAgentLightHooks)
+            if cleaned.isEmpty {
+                hooks.removeValue(forKey: event)
+            } else {
+                hooks[event] = cleaned
+            }
+        }
 
         for event in hookEvents {
             var entries = hooks[event] as? [[String: Any]] ?? []

@@ -89,9 +89,17 @@ final class StatusBarController: NSObject, NSWindowDelegate {
             store: store,
             settings: settings,
             width: preferredPanelWidth(),
-            openSession: { [weak self] session in
+            openThread: { [weak self] session in
                 self?.closePanel()
-                self?.openAction.open(session)
+                self?.openAction.openThread(session)
+            },
+            openFolder: { [weak self] session in
+                self?.closePanel()
+                self?.openAction.openFolder(session)
+            },
+            copyText: { text in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
             },
             showClaudeCodeSettings: { [weak self] in
                 self?.closePanel()
@@ -324,13 +332,54 @@ private struct StatusPanelView: View {
     @ObservedObject var store: StatusStore
     @ObservedObject var settings: AppSettings
     let width: CGFloat
-    let openSession: (AgentSession) -> Void
+    let openThread: (AgentSession) -> Void
+    let openFolder: (AgentSession) -> Void
+    let copyText: (String) -> Void
     let showClaudeCodeSettings: () -> Void
     let showOnboarding: () -> Void
     let showSettings: () -> Void
     let quit: () -> Void
 
+    @State private var selectedSessionID: String?
+
     var body: some View {
+        content
+            .frame(width: width)
+            .background(MenuMaterialView())
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
+            )
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let selectedSession {
+            SessionDetailPanelView(
+                session: selectedSession,
+                canOpenThread: OpenCodexAction().threadURLToOpen(for: selectedSession) != nil,
+                canOpenFolder: OpenCodexAction().folderURL(for: selectedSession) != nil,
+                back: { selectedSessionID = nil },
+                openThread: { openThread(selectedSession) },
+                openFolder: { openFolder(selectedSession) },
+                copyWorkspacePath: {
+                    if let workspacePath = selectedSession.workspacePath {
+                        copyText(workspacePath)
+                    }
+                },
+                copyThreadURL: {
+                    if let threadURL = selectedSession.threadURL {
+                        copyText(threadURL.absoluteString)
+                    }
+                }
+            )
+        } else {
+            mainPanel
+        }
+    }
+
+    private var mainPanel: some View {
         VStack(spacing: 0) {
             PopoverHeaderRow(
                 statusText: "Agents are \(store.aggregateStatus.displayName.lowercased())",
@@ -348,9 +397,8 @@ private struct StatusPanelView: View {
                     ForEach(store.visibleSessions, id: \.id) { session in
                         SessionPopoverRow(
                             session: session,
-                            canOpen: OpenCodexAction().canOpen(session),
                             action: {
-                                openSession(session)
+                                selectedSessionID = session.id
                             }
                         )
                     }
@@ -378,18 +426,16 @@ private struct StatusPanelView: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 7)
         }
-        .frame(width: width)
-        .background(MenuMaterialView())
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
-        )
     }
 
     private var sessionCountText: String {
         let count = store.visibleSessions.count
         return count == 1 ? "1 agent session" : "\(count) agent sessions"
+    }
+
+    private var selectedSession: AgentSession? {
+        guard let selectedSessionID else { return nil }
+        return store.visibleSessions.first { $0.id == selectedSessionID }
     }
 }
 
@@ -441,17 +487,12 @@ private struct PopoverHeaderRow: View {
 
 private struct SessionPopoverRow: View {
     let session: AgentSession
-    let canOpen: Bool
     let action: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: {
-            if canOpen {
-                action()
-            }
-        }) {
+        Button(action: action) {
             HStack(spacing: 11) {
                 Image(nsImage: ProviderIconRenderer.image(provider: session.provider, size: NSSize(width: 20, height: 20)))
                     .resizable()
@@ -480,11 +521,190 @@ private struct SessionPopoverRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isHovering && canOpen ? Color.accentColor.opacity(0.12) : Color.clear)
+                    .fill(isHovering ? Color.accentColor.opacity(0.12) : Color.clear)
             )
         }
         .buttonStyle(.plain)
-        .opacity(canOpen ? 1 : 0.72)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+    }
+}
+
+private struct SessionDetailPanelView: View {
+    let session: AgentSession
+    let canOpenThread: Bool
+    let canOpenFolder: Bool
+    let back: () -> Void
+    let openThread: () -> Void
+    let openFolder: () -> Void
+    let copyWorkspacePath: () -> Void
+    let copyThreadURL: () -> Void
+
+    @State private var isBackHovering = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button(action: back) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Back")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(width: 68, height: 32)
+                    .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(isBackHovering ? Color.accentColor.opacity(0.10) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isBackHovering = hovering
+                }
+
+                Image(nsImage: ProviderIconRenderer.image(provider: session.provider, size: NSSize(width: 20, height: 20)))
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.projectName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                    Text(providerName)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
+
+                SessionStatusBadge(status: session.status)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 50)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 10) {
+                SessionDetailField(title: "Status", value: session.status.displayName)
+
+                if let detail = session.detail, !detail.isEmpty {
+                    SessionDetailField(title: "Detail", value: detail)
+                }
+
+                if let updatedAt = session.updatedAt {
+                    SessionDetailField(
+                        title: "Updated",
+                        value: updatedAt.formatted(date: .abbreviated, time: .shortened)
+                    )
+                }
+
+                if let workspacePath = session.workspacePath, !workspacePath.isEmpty {
+                    SessionDetailField(title: "Workspace", value: workspacePath)
+                }
+
+                if let threadURL = session.threadURL {
+                    SessionDetailField(title: "Thread", value: threadURL.absoluteString)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            VStack(spacing: 6) {
+                if canOpenThread {
+                    SessionDetailAction(title: "Open Codex Thread", symbolName: "arrow.up.forward.app", action: openThread)
+                }
+
+                if canOpenFolder {
+                    SessionDetailAction(title: "Open Folder", symbolName: "folder", action: openFolder)
+                }
+
+                if session.workspacePath != nil {
+                    SessionDetailAction(title: "Copy Workspace Path", symbolName: "doc.on.doc", action: copyWorkspacePath)
+                }
+
+                if session.threadURL != nil {
+                    SessionDetailAction(title: "Copy Thread URL", symbolName: "link", action: copyThreadURL)
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var providerName: String {
+        switch session.provider {
+        case "claude-code":
+            return "Claude Code"
+        case "codex":
+            return "Codex"
+        default:
+            return session.provider
+        }
+    }
+}
+
+private struct SessionDetailField: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundStyle(.primary.opacity(0.82))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SessionDetailAction: View {
+    let title: String
+    let symbolName: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isHovering ? Color.accentColor.opacity(0.10) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
         .onHover { hovering in
             isHovering = hovering
         }

@@ -18,6 +18,22 @@ unknown. It is built for the moment when you have several agents running in the
 background and you do not want to keep switching windows just to know whether
 one of them finished, failed, or is still busy.
 
+## Table of Contents
+
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Status Colors](#status-colors)
+- [How It Works](#how-it-works)
+- [Privacy](#privacy)
+- [Requirements](#requirements)
+- [Releases](#releases)
+- [Run Locally](#run-locally)
+- [Development](#development)
+- [Configuration](#configuration)
+- [Limitations](#limitations)
+- [Repository Notes](#repository-notes)
+- [License](#license)
+
 ## Screenshots
 
 > Screenshot placeholder: menu bar status popover.
@@ -88,10 +104,10 @@ an accurate liveness signal. Claude Code closes transcript files between writes,
 so the collector combines recent transcript updates with read-only local process
 checks scoped to the same workspace.
 
-Claude Code can also be switched to optional hooks mode from
-**Settings... > Claude Code**. In that mode Agent Light adds local Claude Code
-command hooks that call the bundled `AgentClaudeHook` helper. The helper receives
-Claude Code lifecycle events and writes compact status metadata under:
+Claude Code can also be switched to optional hooks mode during onboarding or
+from **Settings... > Claude Code**. In that mode Agent Light adds local Claude
+Code command hooks that call the bundled `AgentClaudeHook` helper. The helper
+receives Claude Code lifecycle events and writes compact status metadata under:
 
 ```text
 ~/.agent-traffic-lights/claude-hooks
@@ -208,10 +224,13 @@ The default status file path is:
 ## Limitations
 
 - Codex approval prompts are not reliably represented in rollout JSONL, so they
-  are not inferred as `needsInput`.
-- Claude Code transcript-only mode cannot always detect permission prompts.
-  Enable optional Claude Code hooks in Claude Code settings for more precise
-  `needsInput` status.
+  cannot always be inferred as `needsInput` from rollout files alone.
+- Claude Code transcript-only mode is best-effort for permission prompts. Use
+  the recommended Claude Code hooks mode from onboarding or
+  **Settings... > Claude Code** for more precise `needsInput` and completion
+  status.
+- New Claude Code hook settings apply to new Claude Code sessions. Start a new
+  Claude Code session after installing, removing, or changing hooks.
 - If you move the app bundle after installing Claude Code hooks, install hooks
   again so Claude Code points at the new app path.
 - The app currently targets macOS only.

@@ -83,9 +83,12 @@ final class SessionAlertNotifier {
         }
 
         if session.provider == "claude-code" {
-            return session.status == .idle
-                && isClaudeIdlePrompt(session)
-                && !isClaudeIdlePrompt(previous)
+            // Edge-trigger on the discrete `Stop` completion marker: fire exactly once when a
+            // strictly newer `completedAt` appears. This is immune to working/idle flapping and
+            // fires the moment the turn ends, instead of waiting for Claude's delayed idle_prompt.
+            guard let completedAt = session.completedAt else { return false }
+            guard let previousCompletedAt = previous.completedAt else { return true }
+            return completedAt > previousCompletedAt
         }
 
         return previous.status == .working && session.status == .idle
@@ -210,11 +213,6 @@ final class SessionAlertNotifier {
             return fallback
         }
         return detail
-    }
-
-    private func isClaudeIdlePrompt(_ session: AgentSession) -> Bool {
-        session.provider == "claude-code"
-            && session.detail == "Claude Code is waiting for your next prompt"
     }
 
     private func workspaceSummary(for session: AgentSession) -> String? {

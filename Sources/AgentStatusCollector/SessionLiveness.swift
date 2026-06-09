@@ -33,10 +33,29 @@ public struct LsofProcessChecker: ProcessChecker {
         let workspace = Self.normalizedPath(workspacePath)
         guard !workspace.isEmpty else { return 0 }
 
-        return claudeCodePIDs().filter { pid in
-            guard let cwd = cwd(for: pid) else { return false }
-            return Self.normalizedPath(cwd) == workspace
-        }.count
+        return claudeCodeCwds().filter { $0 == workspace }.count
+    }
+
+    /// Normalized cwds of all live `claude` processes, via one `pgrep` + one batched `lsof`.
+    /// `lsof` costs ~0.3s per invocation, so querying every pid in a single call (instead of one
+    /// call per pid) is what keeps the collector cycle short.
+    private func claudeCodeCwds() -> [String] {
+        let pids = claudeCodePIDs()
+        guard !pids.isEmpty else { return [] }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        proc.arguments = ["-a", "-p", pids.map(String.init).joined(separator: ","), "-d", "cwd", "-Fn"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return [] }
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        proc.waitUntilExit()
+
+        return output.split(separator: "\n")
+            .filter { $0.hasPrefix("n") }
+            .map { Self.normalizedPath(String($0.dropFirst())) }
     }
 
     private func claudeCodePIDs() -> [Int32] {
@@ -56,22 +75,6 @@ public struct LsofProcessChecker: ProcessChecker {
                   pid != selfPID else { return nil }
             return pid
         }
-    }
-
-    private func cwd(for pid: Int32) -> String? {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        proc.arguments = ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"]
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = FileHandle.nullDevice
-        do { try proc.run() } catch { return nil }
-        proc.waitUntilExit()
-
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        return output.split(separator: "\n")
-            .first { $0.hasPrefix("n") }
-            .map { String($0.dropFirst()) }
     }
 
     private static func normalizedPath(_ path: String) -> String {

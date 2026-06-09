@@ -168,67 +168,69 @@ final class SessionAlertNotifierTests: XCTestCase {
         XCTAssertEqual(posted, ["Codex finished: Newer"])
     }
 
-    func testClaudeCodeCompletionWaitsForIdlePrompt() {
+    func testClaudeCodeCompletionFiresImmediatelyOnStopMarker() {
         var posted: [(String, String)] = []
         let notifier = SessionAlertNotifier(post: { title, body in posted.append((title, body)) })
         let workspacePath = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/garden-copilot")
             .path
+        let stopAt = Date(timeIntervalSince1970: 1000)
+
+        func claude(status: AgentStatus, detail: String, completedAt: Date?) -> AgentSession {
+            session(id: "garden", provider: "claude-code", projectName: "Garden Copilot",
+                    status: status, detail: detail, workspacePath: workspacePath, completedAt: completedAt)
+        }
 
         notifier.update(
             aggregate: .working,
-            sessions: [
-                session(
-                    id: "garden",
-                    provider: "claude-code",
-                    projectName: "Garden Copilot",
-                    status: .working,
-                    detail: "Claude Code is working",
-                    workspacePath: workspacePath
-                )
-            ],
-            notifyOnAttention: false,
-            notifyOnSessionCompletion: true,
-            notifyOnAllCompletion: false
+            sessions: [claude(status: .working, detail: "Claude Code is working", completedAt: nil)],
+            notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: false
         )
+        // The Stop hook stamps completedAt — the notification fires right away, without waiting
+        // for Claude's delayed idle_prompt.
         notifier.update(
             aggregate: .idle,
-            sessions: [
-                session(
-                    id: "garden",
-                    provider: "claude-code",
-                    projectName: "Garden Copilot",
-                    status: .idle,
-                    detail: "Last Claude Code turn completed",
-                    workspacePath: workspacePath
-                )
-            ],
-            notifyOnAttention: false,
-            notifyOnSessionCompletion: true,
-            notifyOnAllCompletion: false
-        )
-
-        XCTAssertTrue(posted.isEmpty)
-
-        notifier.update(
-            aggregate: .idle,
-            sessions: [
-                session(
-                    id: "garden",
-                    provider: "claude-code",
-                    projectName: "Garden Copilot",
-                    status: .idle,
-                    detail: "Claude Code is waiting for your next prompt",
-                    workspacePath: workspacePath
-                )
-            ],
-            notifyOnAttention: false,
-            notifyOnSessionCompletion: true,
-            notifyOnAllCompletion: false
+            sessions: [claude(status: .idle, detail: "Last Claude Code turn completed", completedAt: stopAt)],
+            notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: false
         )
 
         XCTAssertEqual(posted.map(\.0), ["Claude Code finished: Garden Copilot"])
-        XCTAssertEqual(posted.map(\.1), ["Claude Code is waiting for your next prompt Workspace: ~/Documents/garden-copilot"])
+        XCTAssertEqual(posted.map(\.1), ["Last Claude Code turn completed Workspace: ~/Documents/garden-copilot"])
+    }
+
+    func testClaudeCodeCompletionFiresOncePerTurnDespiteStatusFlapping() {
+        var posted: [String] = []
+        let notifier = SessionAlertNotifier(post: { title, _ in posted.append(title) })
+        let workspacePath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/garden-copilot")
+            .path
+        let firstStop = Date(timeIntervalSince1970: 1000)
+        let secondStop = Date(timeIntervalSince1970: 2000)
+
+        func claude(status: AgentStatus, completedAt: Date?) -> AgentSession {
+            session(id: "garden", provider: "claude-code", projectName: "Garden Copilot",
+                    status: status, detail: "d", workspacePath: workspacePath, completedAt: completedAt)
+        }
+
+        func push(_ status: AgentStatus, _ completedAt: Date?) {
+            notifier.update(
+                aggregate: status, sessions: [claude(status: status, completedAt: completedAt)],
+                notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: false
+            )
+        }
+
+        push(.working, nil)
+        push(.idle, firstStop)      // turn 1 completes → fires
+        // Status wobbles (long-tool false idle, transcript race) but the completion marker is
+        // unchanged, so no spurious repeats.
+        push(.working, firstStop)
+        push(.idle, firstStop)
+        push(.working, firstStop)
+        // A genuinely new turn finishes → a strictly newer marker → fires again.
+        push(.working, nil)
+        push(.idle, secondStop)
+
+        XCTAssertEqual(posted, ["Claude Code finished: Garden Copilot", "Claude Code finished: Garden Copilot"])
     }
 
     func testAttentionNotificationNamesAgentProjectAndReason() {
@@ -265,7 +267,8 @@ final class SessionAlertNotifierTests: XCTestCase {
         projectName: String = "Project",
         status: AgentStatus,
         detail: String? = nil,
-        workspacePath: String? = nil
+        workspacePath: String? = nil,
+        completedAt: Date? = nil
     ) -> AgentSession {
         AgentSession(
             id: id,
@@ -275,7 +278,8 @@ final class SessionAlertNotifierTests: XCTestCase {
             detail: detail,
             workspacePath: workspacePath,
             threadURL: nil,
-            updatedAt: nil
+            updatedAt: nil,
+            completedAt: completedAt
         )
     }
 }

@@ -25,7 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.$aggregateStatus
             .sink { [weak controller] _ in
-                controller?.updateIcon()
+                // `@Published` fires in `willSet`, so the property still holds the OLD value here.
+                // Defer to the next main-actor tick so `updateIcon()` reads the committed value and
+                // the menu-bar icon stays in sync with the SwiftUI panel (which renders post-commit).
+                Task { @MainActor in controller?.updateIcon() }
             }
             .store(in: &cancellables)
 

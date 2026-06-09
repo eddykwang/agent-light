@@ -32,8 +32,14 @@ public enum ClaudeHookEventMapper {
             detail: detail,
             workspacePath: cwd,
             transcriptPath: input["transcript_path"] as? String,
-            updatedAt: now
+            updatedAt: now,
+            completedAt: isTurnCompletion(eventName: eventName) ? now : nil
         )
+    }
+
+    /// `Stop` marks the end of a turn — the one discrete, non-flapping "task finished" signal.
+    private static func isTurnCompletion(eventName: String) -> Bool {
+        eventName == "Stop"
     }
 
     private static func statusAndDetail(
@@ -48,13 +54,15 @@ public enum ClaudeHookEventMapper {
              "PostToolUseFailure", "PostToolBatch", "ElicitationResult",
              "TaskCreated", "SubagentStart":
             return (.working, "Claude Code is working")
-        case "PermissionRequest", "PermissionDenied", "Elicitation":
+        case "PermissionRequest", "Elicitation":
             return (.needsInput, "Claude Code needs permission")
         case "Notification":
             return notificationStatusAndDetail(notificationType: notificationType)
         case "Stop", "SessionEnd":
             return (.idle, "Last Claude Code turn completed")
-        case "SubagentStop", "TaskCompleted", "TeammateIdle":
+        case "PermissionDenied", "SubagentStop", "TaskCompleted", "TeammateIdle":
+            // The user already responded (denial) or these are local sub-events — leave the
+            // session's prior state untouched rather than lighting the attention lamp.
             return nil
         case "StopFailure":
             return (.failed, "Claude Code stop failed")

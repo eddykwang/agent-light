@@ -5,8 +5,9 @@ enum ClaudeHookInstaller {
         .appendingPathComponent(".claude/settings.json")
 
     /// Events whose type is carried in the JSON payload (`hook_event_name`).
-    /// `needsInput` comes from the dedicated `PermissionRequest`/`PermissionDenied`/`Elicitation`
-    /// events. `Notification` is intentionally NOT here — its type is matcher-based (see below).
+    /// `needsInput` comes from the dedicated `PermissionRequest`/`Elicitation` events.
+    /// `PermissionDenied` is registered too but the mapper treats it as a no-op (the user already
+    /// responded). `Notification` is intentionally NOT here — its type is matcher-based (see below).
     private static let hookEvents = [
         "SessionStart",
         "UserPromptSubmit",

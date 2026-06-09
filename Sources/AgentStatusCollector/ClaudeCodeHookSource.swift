@@ -57,7 +57,8 @@ public struct ClaudeCodeHookSource: SessionSource {
                     status: state.status,
                     detail: state.detail,
                     updatedAt: state.updatedAt,
-                    isEventSignal: true
+                    isEventSignal: true,
+                    completedAt: state.completedAt
                 )
             }
     }

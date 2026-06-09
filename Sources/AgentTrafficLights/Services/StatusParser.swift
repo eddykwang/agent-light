@@ -38,9 +38,11 @@ struct StatusParser {
             let existingDate = existing.updatedAt ?? .distantPast
             let candidateDate = session.updatedAt ?? .distantPast
 
-            if candidateDate >= existingDate {
-                sessionsByKey[key] = session
-            }
+            // The completion marker is independent of status/recency, so keep the latest one
+            // even when a different session wins the workspace dedup.
+            let mergedCompletedAt = latest(existing.completedAt, session.completedAt)
+            let winner = candidateDate >= existingDate ? session : existing
+            sessionsByKey[key] = winner.withCompletedAt(mergedCompletedAt)
         }
 
         return StatusSnapshot(
@@ -48,6 +50,13 @@ struct StatusParser {
             updatedAt: snapshot.updatedAt,
             sessions: orderedKeys.compactMap { sessionsByKey[$0] }
         )
+    }
+
+    private func latest(_ lhs: Date?, _ rhs: Date?) -> Date? {
+        switch (lhs, rhs) {
+        case let (l?, r?): return max(l, r)
+        default: return lhs ?? rhs
+        }
     }
 
     private func deduplicationKey(for session: AgentSession) -> String {

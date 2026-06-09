@@ -121,7 +121,9 @@ final class ClaudeHookEventMapperTests: XCTestCase {
         XCTAssertEqual(state?.status, .needsInput)
     }
 
-    func testPermissionDeniedMapsToNeedsInput() {
+    func testPermissionDeniedDoesNotChangeState() {
+        // A denial means the user (or a deny rule) already responded, so it must NOT light the
+        // attention lamp — the prior working/idle state stands until the next real event.
         let state = ClaudeHookEventMapper.state(
             from: [
                 "session_id": "abc",
@@ -131,7 +133,7 @@ final class ClaudeHookEventMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 100)
         )
 
-        XCTAssertEqual(state?.status, .needsInput)
+        XCTAssertNil(state)
     }
 
     func testPostToolBatchMapsToWorking() {
@@ -159,6 +161,22 @@ final class ClaudeHookEventMapperTests: XCTestCase {
 
         XCTAssertEqual(state?.status, .idle)
         XCTAssertEqual(state?.detail, "Last Claude Code turn completed")
+        XCTAssertEqual(state?.completedAt, Date(timeIntervalSince1970: 100),
+                       "Stop is the discrete turn-completion marker")
+    }
+
+    func testNonStopEventsDoNotSetCompletedAt() {
+        for eventName in ["UserPromptSubmit", "PreToolUse", "PostToolUse", "SessionStart"] {
+            let state = ClaudeHookEventMapper.state(
+                from: [
+                    "session_id": "abc",
+                    "cwd": "/tmp/demo",
+                    "hook_event_name": eventName
+                ],
+                now: Date(timeIntervalSince1970: 100)
+            )
+            XCTAssertNil(state?.completedAt, "\(eventName) must not stamp a completion marker")
+        }
     }
 
     func testStopFailureMapsToFailed() {

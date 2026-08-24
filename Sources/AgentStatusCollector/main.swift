@@ -14,6 +14,7 @@ var sources: [any SessionSource] = []
 if claudeHooksEnabled {
     sources.append(ClaudeCodeHookSource())
 }
+sources.append(CopilotHookSource())
 sources.append(ClaudeCodeTranscriptSource())
 sources.append(CodexRolloutSource())
 

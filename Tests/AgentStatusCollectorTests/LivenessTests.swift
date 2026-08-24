@@ -123,6 +123,26 @@ final class LivenessTests: XCTestCase {
         XCTAssertEqual(filter.aliveSessions(from: [session]).map(\.id), ["cc-hook-working"])
     }
 
+    func testCopilotEventSignalUsesSourceOwnedRetention() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let session = makeSession(
+            id: "copilot-hook",
+            provider: "copilot-cli",
+            workspacePath: "/p",
+            fileURL: URL(fileURLWithPath: "/p/copilot.json"),
+            status: .needsInput,
+            updatedAt: now.addingTimeInterval(-900),
+            isEventSignal: true
+        )
+        let filter = LsofLivenessFilter(
+            checker: StubChecker(openPaths: []),
+            now: { now },
+            fallbackStaleAfter: 300
+        )
+
+        XCTAssertEqual(filter.aliveSessions(from: [session]).map(\.id), ["copilot-hook"])
+    }
+
     func testCCWorkingSessionUsesShorterActiveStaleWindow() {
         let now = Date(timeIntervalSince1970: 1_000)
         let session = makeSession(provider: "claude-code",

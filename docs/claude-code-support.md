@@ -45,7 +45,7 @@ turn, so marking those as failed caused too many false alarms.
 
 ## Hooks Mode
 
-Hooks mode is optional and can be enabled from **Settings... > Claude Code**. It
+Hooks mode is optional and can be enabled from **Settings... > Agents > Claude Code**. It
 installs Agent Light command hooks into:
 
 ```text
@@ -92,7 +92,7 @@ collector never starts, stops, or signals Claude Code processes.
 
 ## Installing And Removing Hooks
 
-Use **Settings... > Claude Code** for normal install and removal. Installing hooks
+Use **Settings... > Agents > Claude Code** for normal install and removal. Installing hooks
 also switches Claude Code status mode to Hooks. Removing hooks switches it back
 to Default.
 

@@ -4,14 +4,14 @@ import XCTest
 final class OnboardingFlowTests: XCTestCase {
     func testStepOrderMovesForwardAndBackward() {
         XCTAssertEqual(OnboardingStep.welcome.next, .signal)
-        XCTAssertEqual(OnboardingStep.signal.next, .claudeCode)
-        XCTAssertEqual(OnboardingStep.claudeCode.next, .complete)
+        XCTAssertEqual(OnboardingStep.signal.next, .agents)
+        XCTAssertEqual(OnboardingStep.agents.next, .complete)
         XCTAssertNil(OnboardingStep.complete.next)
 
         XCTAssertNil(OnboardingStep.welcome.previous)
         XCTAssertEqual(OnboardingStep.signal.previous, .welcome)
-        XCTAssertEqual(OnboardingStep.claudeCode.previous, .signal)
-        XCTAssertEqual(OnboardingStep.complete.previous, .claudeCode)
+        XCTAssertEqual(OnboardingStep.agents.previous, .signal)
+        XCTAssertEqual(OnboardingStep.complete.previous, .agents)
     }
 
     func testHookOutcomeResolutionUsesHooksOnlyAfterInstall() {
@@ -30,5 +30,19 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(failed.hooksInstalled)
         XCTAssertTrue(failed.message.contains("Permission denied"))
         XCTAssertTrue(failed.message.contains("~/.claude/settings.json"))
+    }
+
+    func testCopilotHookOutcomeResolutionReflectsInstallResult() {
+        let installed = CopilotHookChoiceResolution.resolve(.installed)
+        XCTAssertTrue(installed.hooksInstalled)
+        XCTAssertTrue(installed.message.contains("installed"))
+
+        let skipped = CopilotHookChoiceResolution.resolve(.skipped)
+        XCTAssertFalse(skipped.hooksInstalled)
+        XCTAssertTrue(skipped.message.contains("skipped"))
+
+        let failed = CopilotHookChoiceResolution.resolve(.failed("Conflict"))
+        XCTAssertFalse(failed.hooksInstalled)
+        XCTAssertTrue(failed.message.contains("Conflict"))
     }
 }

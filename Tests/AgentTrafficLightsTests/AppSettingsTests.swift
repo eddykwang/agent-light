@@ -19,6 +19,9 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(settings.launchAtLogin)
         XCTAssertEqual(settings.claudeCodeStatusMode, .automatic)
         XCTAssertFalse(settings.hasCompletedOnboarding)
+        XCTAssertFalse(settings.desktopLightVisible)
+        XCTAssertNil(settings.desktopLightPosition)
+        XCTAssertEqual(settings.desktopLightScale, 1.0)
     }
 
     func testPersistsOrientationPathAlertsAndLaunchPreference() {
@@ -34,6 +37,9 @@ final class AppSettingsTests: XCTestCase {
         settings.launchAtLogin = true
         settings.claudeCodeStatusMode = .hooks
         settings.hasCompletedOnboarding = true
+        settings.desktopLightVisible = true
+        settings.desktopLightPosition = DesktopLightPosition(x: 412.5, y: 238.25)
+        settings.desktopLightScale = 1.6
 
         let reloaded = AppSettings(defaults: defaults)
 
@@ -48,6 +54,33 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(reloaded.launchAtLogin)
         XCTAssertEqual(reloaded.claudeCodeStatusMode, .hooks)
         XCTAssertTrue(reloaded.hasCompletedOnboarding)
+        XCTAssertTrue(reloaded.desktopLightVisible)
+        XCTAssertEqual(reloaded.desktopLightPosition, DesktopLightPosition(x: 412.5, y: 238.25))
+        XCTAssertEqual(reloaded.desktopLightScale, 1.6)
+    }
+
+    func testCanClearPersistedDesktopLightPosition() {
+        let defaults = UserDefaults(suiteName: "AppSettingsTests.desktopLightPosition")!
+        defaults.removePersistentDomain(forName: "AppSettingsTests.desktopLightPosition")
+
+        let settings = AppSettings(defaults: defaults)
+        settings.desktopLightPosition = DesktopLightPosition(x: 100, y: 200)
+        settings.desktopLightPosition = nil
+
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertNil(reloaded.desktopLightPosition)
+    }
+
+    func testDesktopLightScaleIsClampedWhenPersisted() {
+        let defaults = UserDefaults(suiteName: "AppSettingsTests.desktopLightScale")!
+        defaults.removePersistentDomain(forName: "AppSettingsTests.desktopLightScale")
+
+        let settings = AppSettings(defaults: defaults)
+        settings.desktopLightScale = 10
+        XCTAssertEqual(settings.desktopLightScale, DesktopLightScaleLimits.maximum)
+
+        settings.desktopLightScale = 0.1
+        XCTAssertEqual(settings.desktopLightScale, DesktopLightScaleLimits.minimum)
     }
 
     func testLegacyAlertsEnabledStaysSyncedWithNotifyOnAttention() {

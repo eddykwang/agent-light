@@ -2,6 +2,13 @@
 
 Date: 2026-06-13
 
+> ✅ **Status: Ready as of 2026-07-22.** The blocker in
+> [github/copilot-cli#1157](https://github.com/github/copilot-cli/issues/1157)
+> is closed. Current Copilot CLI documentation includes user-level
+> `~/.copilot/hooks/*.json` configuration plus `agentStop`, `notification`,
+> `errorOccurred`, and session lifecycle events. This design still targets only
+> the local Copilot CLI surface, not VS Code chat or cloud coding agents.
+
 ## Goal
 
 Add first-class GitHub Copilot CLI status support to Agent Light through local
@@ -76,29 +83,29 @@ The compact status file stores only:
 - status
 - short detail string
 - workspace path
-- optional session or transcript path if Copilot provides one
 - updated timestamp
 - optional completed timestamp
+- optional session-ended timestamp used for terminal retention
 
 The collector reads Copilot hook files when Copilot hooks are enabled, treats
 them as event signals, merges them with other providers, and writes the shared
 status snapshot at `~/.agent-traffic-lights/status.json`.
 
-`SessionEnd` removes the hook status file so completed sessions do not linger.
-Old orphaned files are pruned by `CopilotHookSource`, matching the Claude hook
-source behavior.
+`SessionEnd` marks the state as terminal. The collector retains that final idle
+or failed state for 60 seconds so short non-interactive commands can be observed,
+then removes it. Old orphaned files are pruned after 24 hours.
 
 ## Status Mapping
 
 Copilot CLI status semantics should match Claude Code hooks:
 
-- session start, prompt submitted, and tool events -> `working`
-- permission or input request events -> `needsInput`
-- relevant permission/input notification events -> `needsInput`
+- session start -> `idle`, unless it carries an initial prompt
+- prompt submitted and post-tool events -> `working`
+- actual permission/input notification events -> `needsInput`
 - turn completion events -> `idle` and set `completedAt`
-- session end events -> remove the compact status file
+- session end events -> terminal idle/failed retained for 60 seconds
 - explicit failure events -> `failed`
-- unknown active lifecycle events -> `working`
+- unknown lifecycle events -> no state change
 - noisy informational events -> no state change
 
 The mapper should be conservative about alerts. It should only emit
@@ -157,9 +164,12 @@ shape. Prefer a dedicated user-level hook file such as:
 ~/.copilot/hooks/agent-light.json
 ```
 
-if that format cleanly supports all required events. Otherwise use the
-user-level `~/.copilot/settings.json` hooks block. The implementation plan
-should verify the exact current Copilot CLI format before coding.
+using the official version-1 hook-file format. Do not fall back to modifying
+`~/.copilot/settings.json`.
+
+Do not install `preToolUse`, because Copilot treats command-hook failures there
+as tool denials. Do not map `permissionRequest` to attention, because it fires
+before the permission service decides whether an actual user prompt is needed.
 
 Install and remove operations must identify Agent Light entries by the
 `AgentCopilotHook` command. They must not remove user hooks, Claude Code hooks,
@@ -227,11 +237,12 @@ Update:
 Documentation must be explicit that this is Copilot CLI support, not general
 VS Code Copilot support.
 
-## Open Implementation Checks
+## Verified Implementation Contract
 
-Before coding, verify the current Copilot CLI hook configuration format and
-event names against GitHub's official documentation. The design intentionally
-keeps the installer isolated so any format differences affect only Copilot
+The implementation uses Copilot CLI's native camelCase event names and the
+official version-1 user hook file format. `AgentCopilotHook` receives the event
+name as argv because native payloads do not consistently repeat it in the JSON.
+The installer remains isolated so future protocol changes affect only Copilot
 files.
 
 ## Acceptance Criteria

@@ -151,6 +151,27 @@ final class CodexSourceTests: XCTestCase {
         XCTAssertEqual(sessions.first?.status, .idle)
     }
 
+    func testPendingEscalatedPermissionRolloutClassifiesAsWorking() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        let sessionsDir = root.appendingPathComponent("sessions")
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let jsonl = sessionsDir.appendingPathComponent("rollout-escalated-tool.jsonl")
+
+        let lines = [
+            #"{"type":"session_meta","payload":{"id":"sid-permission","cwd":"/tmp/agent-light-demo/proj","thread_source":"user"}}"#,
+            #"{"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}"#,
+            #"{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call_approval","arguments":"{\"cmd\":\"swift test\",\"sandbox_permissions\":\"require_escalated\",\"justification\":\"Allow this command?\"}"}}"#
+        ].joined(separator: "\n")
+        try lines.write(to: jsonl, atomically: true, encoding: .utf8)
+
+        let source = CodexRolloutSource(sessionsRoot: sessionsDir.path)
+        let sessions = try source.currentSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.status, .working)
+        XCTAssertEqual(sessions.first?.detail, "Codex is working")
+    }
+
     func testLongRunningTurnClassifiesAsWorkingWhenLifecycleIsOutsideRecentTail() throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         let sessionsDir = root.appendingPathComponent("sessions")

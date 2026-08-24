@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updateChecker = UpdateChecker()
     private var alertNotifier: SessionAlertNotifier?
     private var statusBarController: StatusBarController?
+    private var desktopLightController: DesktopLightController?
     private var collectorProcess: CollectorProcess?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -17,8 +18,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         let controller = StatusBarController(store: store, settings: settings, updateChecker: updateChecker)
+        let desktopLight = DesktopLightController(store: store, settings: settings)
+        desktopLight.onOpenStatusPanel = { [weak controller] frame in
+            controller?.togglePanel(relativeTo: frame)
+        }
         let notifier = SessionAlertNotifier()
         statusBarController = controller
+        desktopLightController = desktopLight
         alertNotifier = notifier
 
         startCollector()
@@ -91,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        desktopLightController?.closeImmediately()
         collectorProcess?.stop()
         watcher.stop()
     }

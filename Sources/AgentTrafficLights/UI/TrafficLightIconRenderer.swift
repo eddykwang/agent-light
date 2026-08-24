@@ -73,11 +73,11 @@ enum TrafficLightIconRenderer {
         if !active {
             switch lampStatus {
             case .failed:
-                return NSColor(red: 0.30, green: 0.10, blue: 0.10, alpha: 1)
+                return NSColor(red: 0.42, green: 0.08, blue: 0.07, alpha: 1)
             case .needsInput:
-                return NSColor(red: 0.36, green: 0.27, blue: 0.05, alpha: 1)
+                return NSColor(red: 0.45, green: 0.33, blue: 0.04, alpha: 1)
             case .working:
-                return NSColor(red: 0.06, green: 0.24, blue: 0.13, alpha: 1)
+                return NSColor(red: 0.05, green: 0.30, blue: 0.14, alpha: 1)
             case .idle, .unknown:
                 return NSColor(calibratedWhite: 0.30, alpha: 1)
             }
@@ -85,11 +85,11 @@ enum TrafficLightIconRenderer {
 
         switch lampStatus {
         case .failed:
-            return NSColor(red: 1.0, green: 0.231, blue: 0.188, alpha: 1)
+            return NSColor(red: 1.0, green: 0.16, blue: 0.13, alpha: 1)
         case .needsInput:
-            return NSColor(red: 1.0, green: 0.749, blue: 0.0, alpha: 1)
+            return NSColor(red: 1.0, green: 0.69, blue: 0.02, alpha: 1)
         case .working:
-            return NSColor(red: 0.0, green: 0.651, blue: 0.318, alpha: 1)
+            return NSColor(red: 0.20, green: 0.82, blue: 0.35, alpha: 1)
         case .idle, .unknown:
             return NSColor(calibratedWhite: 0.45, alpha: 1)
         }

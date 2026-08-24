@@ -1,5 +1,19 @@
 import Foundation
 
+enum AgentIntegration: String, CaseIterable, Identifiable {
+    case claudeCode
+    case copilotCLI
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .claudeCode: return "Claude Code"
+        case .copilotCLI: return "Copilot CLI"
+        }
+    }
+}
+
 enum TrafficLightOrientation: String, Codable, CaseIterable, Identifiable {
     case vertical
     case horizontal
@@ -13,6 +27,21 @@ enum TrafficLightOrientation: String, Codable, CaseIterable, Identifiable {
         case .horizontal:
             return "Horizontal"
         }
+    }
+}
+
+struct DesktopLightPosition: Equatable {
+    let x: Double
+    let y: Double
+}
+
+enum DesktopLightScaleLimits {
+    static let minimum = 0.75
+    static let maximum = 2.0
+    static let defaultValue = 1.0
+
+    static func clamped(_ value: Double) -> Double {
+        min(max(value, minimum), maximum)
     }
 }
 
@@ -39,7 +68,7 @@ enum CompletionNotificationMode: String, Codable, CaseIterable, Identifiable {
         case .off:
             return "Do not send completion notifications."
         case .individual:
-            return "Codex: turn completed. Claude Code hooks: waiting for your next prompt."
+            return "Notify when Codex or a hook-enabled agent completes a turn."
         case .allAgentsIdle:
             return "Notify when all visible agents have reached an idle completion state."
         }
@@ -84,6 +113,10 @@ final class AppSettings: ObservableObject {
         static let notifyOnCompletion = "notifyOnCompletion"
         static let launchAtLogin = "launchAtLogin"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let desktopLightVisible = "desktopLightVisible"
+        static let desktopLightPositionX = "desktopLightPositionX"
+        static let desktopLightPositionY = "desktopLightPositionY"
+        static let desktopLightScale = "desktopLightScale"
     }
 
     private let defaults: UserDefaults
@@ -158,6 +191,51 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var desktopLightVisible: Bool {
+        didSet {
+            defaults.set(desktopLightVisible, forKey: Keys.desktopLightVisible)
+        }
+    }
+
+    var desktopLightPosition: DesktopLightPosition? {
+        get {
+            guard defaults.object(forKey: Keys.desktopLightPositionX) != nil,
+                  defaults.object(forKey: Keys.desktopLightPositionY) != nil else {
+                return nil
+            }
+
+            return DesktopLightPosition(
+                x: defaults.double(forKey: Keys.desktopLightPositionX),
+                y: defaults.double(forKey: Keys.desktopLightPositionY)
+            )
+        }
+        set {
+            guard let newValue else {
+                defaults.removeObject(forKey: Keys.desktopLightPositionX)
+                defaults.removeObject(forKey: Keys.desktopLightPositionY)
+                return
+            }
+
+            defaults.set(newValue.x, forKey: Keys.desktopLightPositionX)
+            defaults.set(newValue.y, forKey: Keys.desktopLightPositionY)
+        }
+    }
+
+    var desktopLightScale: Double {
+        get {
+            guard defaults.object(forKey: Keys.desktopLightScale) != nil else {
+                return DesktopLightScaleLimits.defaultValue
+            }
+            return DesktopLightScaleLimits.clamped(defaults.double(forKey: Keys.desktopLightScale))
+        }
+        set {
+            defaults.set(
+                DesktopLightScaleLimits.clamped(newValue),
+                forKey: Keys.desktopLightScale
+            )
+        }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -181,6 +259,7 @@ final class AppSettings: ObservableObject {
         self.completionNotificationMode = Self.loadCompletionNotificationMode(defaults: defaults)
         self.launchAtLogin = defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? false
         self.hasCompletedOnboarding = defaults.object(forKey: Keys.hasCompletedOnboarding) as? Bool ?? false
+        self.desktopLightVisible = defaults.object(forKey: Keys.desktopLightVisible) as? Bool ?? false
     }
 
     private static func loadCompletionNotificationMode(defaults: UserDefaults) -> CompletionNotificationMode {

@@ -6,7 +6,7 @@ PRODUCT_NAME="Agent Light"
 EXECUTABLE_NAME="AgentTrafficLights"
 BUNDLE_ID="com.agenttrafficlights.AgentTrafficLights"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="0.1.4"
+APP_VERSION="0.1.5"
 APP_BUILD="1"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,6 +17,7 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$EXECUTABLE_NAME"
 APP_ICON="$ROOT_DIR/Resources/AppIcon.icns"
+DESKTOP_LIGHT_ASSETS="$ROOT_DIR/Resources/DesktopLightAssets"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
@@ -27,6 +28,7 @@ swift build
 BUILD_BINARY="$(swift build --show-bin-path)/$EXECUTABLE_NAME"
 COLLECTOR_BINARY="$(swift build --show-bin-path)/AgentStatusCollector"
 CLAUDE_HOOK_BINARY="$(swift build --show-bin-path)/AgentClaudeHook"
+COPILOT_HOOK_BINARY="$(swift build --show-bin-path)/AgentCopilotHook"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
@@ -37,8 +39,11 @@ cp "$COLLECTOR_BINARY" "$APP_MACOS/AgentStatusCollector"
 chmod +x "$APP_MACOS/AgentStatusCollector"
 cp "$CLAUDE_HOOK_BINARY" "$APP_MACOS/AgentClaudeHook"
 chmod +x "$APP_MACOS/AgentClaudeHook"
+cp "$COPILOT_HOOK_BINARY" "$APP_MACOS/AgentCopilotHook"
+chmod +x "$APP_MACOS/AgentCopilotHook"
 cp "$APP_ICON" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$ROOT_DIR/Resources/ProviderIcons" "$APP_RESOURCES/ProviderIcons"
+cp -R "$DESKTOP_LIGHT_ASSETS" "$APP_RESOURCES/DesktopLightAssets"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

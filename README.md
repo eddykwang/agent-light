@@ -12,7 +12,7 @@
 
 A tiny macOS menu bar app for keeping an eye on background coding agents.
 
-Agent Light watches local Codex and Claude Code sessions and turns them
+Agent Light watches local Codex, Claude Code, and GitHub Copilot CLI sessions and turns them
 into a simple traffic-light signal in your menu bar: working, idle, failed, or
 unknown. It is built for the moment when you have several agents running in the
 background and you do not want to keep switching windows just to know whether
@@ -65,12 +65,17 @@ unidentified developer warning the first time you open the app.
 - Automatic Claude Code detection through local transcript files.
 - Optional Claude Code hooks mode for more precise permission, input, and
   completion status.
+- Optional GitHub Copilot CLI hooks for local working, permission, input,
+  failure, and completion status.
 - Read-only liveness checks using file handles, modification times, and local
   process metadata.
 - Optional macOS notifications for attention states, individual session
   completions, and all-agents-idle transitions.
+- Optional draggable Desktop Light with a larger glass traffic-light display
+  that stays above normal windows across Spaces and full-screen apps.
 - Launch-at-login support.
-- No hooks required for the default Codex or Claude Code support path.
+- No hooks required for the default Codex or Claude Code support path. Copilot
+  CLI support requires a user-installed Agent Light hook.
 
 ## Status Colors
 
@@ -84,6 +89,23 @@ unidentified developer warning the first time you open the app.
 
 When multiple sessions are visible, the aggregate menu bar status still prefers
 failure, then input, then working, then idle.
+
+## Desktop Light
+
+Enable **Desktop Light** from the menu bar popover or from
+**Settings... > General > Appearance**. The compact floating signal mirrors the
+app icon's inset traffic-light module and uses the same aggregate state and
+horizontal or vertical layout as the menu bar icon.
+
+- Drag anywhere on the smoked housing to reposition it.
+- Drag any corner to resize it proportionally between 75% and 200%.
+- Click it to open the current Agent Light status panel beside the signal.
+- Right-click and choose **Hide Desktop Light** to dismiss it.
+
+Visibility and position are restored between launches. If a saved display is
+disconnected, Agent Light moves the signal back into the main screen's visible
+area. Desktop Light floats above normal app windows without covering system
+menus, alerts, or the screen saver.
 
 ## How It Works
 
@@ -117,7 +139,7 @@ so the collector combines recent transcript updates with read-only local process
 checks scoped to the same workspace.
 
 Claude Code can also be switched to optional hooks mode during onboarding or
-from **Settings... > Claude Code**. In that mode Agent Light adds local Claude
+from **Settings... > Agents > Claude Code**. In that mode Agent Light adds local Claude
 Code command hooks that call the bundled `AgentClaudeHook` helper. The helper
 receives Claude Code lifecycle events and writes compact status metadata under:
 
@@ -130,16 +152,28 @@ send prompts, tool inputs, model responses, or transcript content to Agent Light
 New hook settings apply to new Claude Code sessions; restart existing Claude
 Code sessions after installing or removing hooks.
 
+For GitHub Copilot CLI, Agent Light can install an isolated user hook file at:
+
+```text
+~/.copilot/hooks/agent-light.json
+```
+
+The bundled `AgentCopilotHook` receives Copilot CLI lifecycle events and writes
+compact state under `~/.agent-traffic-lights/copilot-hooks`. Terminal states are
+retained for 60 seconds so short, non-interactive commands are still visible.
+See [Copilot CLI support](docs/copilot-cli-support.md) for setup and scope.
+
 ## Privacy
 
 Everything runs locally on your Mac.
 
-- The app does not call Codex, Claude Code, or any model API.
+- The app does not call Codex, Claude Code, Copilot, or any model API.
 - The app does not send telemetry.
 - The app does not modify agent transcripts or rollout files.
 - The app does not add anything to an agent's context window.
 - Default support does not require installing Codex or Claude Code hooks.
-- Optional Claude Code hooks store status metadata only, locally on your Mac.
+- Optional Claude Code and Copilot CLI hooks store status metadata only, locally
+  on your Mac.
 
 The collector reads local agent metadata and writes a compact local status JSON
 file for the menu bar app to display.
@@ -165,14 +199,14 @@ early release builds.
 Create a local release zip:
 
 ```bash
-./script/package_release.sh v0.1.3
+./script/package_release.sh v0.1.5
 ```
 
 Tagging a version also publishes the unsigned zip through GitHub Actions:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 ## Run Locally
@@ -217,15 +251,17 @@ Verify that the app bundle launches:
 Open **Settings...** from the menu bar popover to change:
 
 - traffic-light orientation
+- Desktop Light visibility
 - Claude Code default or hooks-based status detection
+- Copilot CLI hook installation and status
 - shared status file path
 - attention notifications
 - individual session completion notifications
 - all-agents-idle completion notifications
 - launch at login
 
-The menu bar popover also shows the current Claude Code mode. Click
-`CC mode: ...` to jump straight to the Claude Code settings tab.
+The menu bar popover includes an **Agent integrations** shortcut to the Claude
+Code and Copilot CLI settings.
 
 The default status file path is:
 
@@ -239,12 +275,16 @@ The default status file path is:
   cannot always be inferred as `needsInput` from rollout files alone.
 - Claude Code transcript-only mode is best-effort for permission prompts. Use
   the recommended Claude Code hooks mode from onboarding or
-  **Settings... > Claude Code** for more precise `needsInput` and completion
+  **Settings... > Agents > Claude Code** for more precise `needsInput` and completion
   status.
 - New Claude Code hook settings apply to new Claude Code sessions. Start a new
   Claude Code session after installing, removing, or changing hooks.
 - If you move the app bundle after installing Claude Code hooks, install hooks
   again so Claude Code points at the new app path.
+- Copilot CLI status requires the Agent Light user hook. Install it from
+  **Settings... > Agents > Copilot CLI**, then start a new Copilot CLI session.
+- Copilot support covers the local CLI only, not VS Code Copilot chat,
+  autocomplete, or Copilot cloud agents.
 - The app currently targets macOS only.
 
 ## Repository Notes

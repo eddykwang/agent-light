@@ -8,6 +8,12 @@ enum ProviderIconRenderer {
             filename = "claude-ai.svg"
         case "codex":
             filename = "codex.png"
+        case "copilot-cli":
+            return systemSymbolImage(
+                name: "chevron.left.forwardslash.chevron.right",
+                size: size,
+                tint: tint
+            )
         default:
             return fallbackImage(size: size, tint: tint)
         }
@@ -62,5 +68,18 @@ enum ProviderIconRenderer {
         image.unlockFocus()
         image.isTemplate = false
         return image
+    }
+
+    private static func systemSymbolImage(name: String, size: NSSize, tint: NSColor) -> NSImage {
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: "Copilot CLI") else {
+            return fallbackImage(size: size, tint: tint)
+        }
+
+        let configuration = NSImage.SymbolConfiguration(
+            pointSize: min(size.width, size.height) * 0.78,
+            weight: .medium
+        )
+        let configured = symbol.withSymbolConfiguration(configuration) ?? symbol
+        return tinted(configured, size: size, tint: tint)
     }
 }

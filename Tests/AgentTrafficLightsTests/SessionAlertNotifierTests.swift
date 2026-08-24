@@ -261,6 +261,63 @@ final class SessionAlertNotifierTests: XCTestCase {
         XCTAssertEqual(posted.map(\.1), ["Claude Code needs permission Workspace: ~/Documents/garden-copilot"])
     }
 
+    func testCopilotCompletionUsesMarkerAndProviderName() {
+        var posted: [String] = []
+        let notifier = SessionAlertNotifier(post: { title, _ in posted.append(title) })
+        let completedAt = Date(timeIntervalSince1970: 1_000)
+
+        notifier.update(
+            aggregate: .working,
+            sessions: [session(id: "cp", provider: "copilot-cli", projectName: "Demo", status: .working)],
+            notifyOnAttention: false,
+            notifyOnSessionCompletion: true,
+            notifyOnAllCompletion: false
+        )
+        notifier.update(
+            aggregate: .idle,
+            sessions: [session(
+                id: "cp",
+                provider: "copilot-cli",
+                projectName: "Demo",
+                status: .idle,
+                completedAt: completedAt
+            )],
+            notifyOnAttention: false,
+            notifyOnSessionCompletion: true,
+            notifyOnAllCompletion: false
+        )
+        notifier.update(
+            aggregate: .idle,
+            sessions: [session(
+                id: "cp",
+                provider: "copilot-cli",
+                projectName: "Demo",
+                status: .idle,
+                completedAt: completedAt
+            )],
+            notifyOnAttention: false,
+            notifyOnSessionCompletion: true,
+            notifyOnAllCompletion: false
+        )
+
+        XCTAssertEqual(posted, ["Copilot CLI finished: Demo"])
+    }
+
+    func testCopilotAttentionUsesProviderName() {
+        var posted: [String] = []
+        let notifier = SessionAlertNotifier(post: { title, _ in posted.append(title) })
+
+        notifier.update(
+            aggregate: .needsInput,
+            sessions: [session(id: "cp", provider: "copilot-cli", projectName: "Demo", status: .needsInput)],
+            notifyOnAttention: true,
+            notifyOnSessionCompletion: false,
+            notifyOnAllCompletion: false
+        )
+
+        XCTAssertEqual(posted, ["Copilot CLI needs input: Demo"])
+    }
+
     private func session(
         id: String,
         provider: String = "codex",

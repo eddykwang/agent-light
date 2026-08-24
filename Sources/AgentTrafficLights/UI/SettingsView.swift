@@ -8,11 +8,14 @@ struct SettingsView: View {
 
     @ObservedObject var settings: AppSettings
     @State private var selectedTab: SettingsTab
+    @State private var selectedAgent: AgentIntegration = .claudeCode
     @State private var launchAtLoginError: String?
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus?
     @State private var notificationTestMessage: String?
     @State private var claudeHooksInstalled = false
     @State private var claudeHookMessage: String?
+    @State private var copilotHookStatus: CopilotHookInstallStatus = .notInstalled
+    @State private var copilotHookMessage: String?
     @FocusState private var isPathFieldFocused: Bool
 
     init(settings: AppSettings, selectedTab: SettingsTab = .general) {
@@ -37,6 +40,7 @@ struct SettingsView: View {
             refreshLaunchAtLoginStatus()
             refreshNotificationAuthorizationStatus()
             refreshClaudeHookStatus()
+            refreshCopilotHookStatus()
         }
     }
 
@@ -107,8 +111,8 @@ struct SettingsView: View {
         switch selectedTab {
         case .general:
             generalPane
-        case .claudeCode:
-            claudeCodePane
+        case .agents:
+            agentsPane
         case .notifications:
             notificationsPane
         case .advanced:
@@ -139,6 +143,15 @@ struct SettingsView: View {
                         .frame(width: 178)
                     }
                 }
+
+                SettingsDivider()
+
+                SettingsToggleRow(
+                    title: "Desktop Light",
+                    subtitle: "Keep a draggable glass traffic light above your windows and across Spaces.",
+                    systemImage: "rectangle.on.rectangle",
+                    isOn: $settings.desktopLightVisible
+                )
             }
 
             SettingsGroup(title: "Startup") {
@@ -241,6 +254,89 @@ struct SettingsView: View {
                         .padding(.vertical, 12)
                 }
             }
+        }
+    }
+
+    private var agentsPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Picker("Agent integration", selection: $selectedAgent) {
+                ForEach(AgentIntegration.allCases) { agent in
+                    Text(agent.displayName).tag(agent)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 300)
+
+            switch selectedAgent {
+            case .claudeCode:
+                claudeCodePane
+            case .copilotCLI:
+                copilotCLIPane
+            }
+        }
+    }
+
+    private var copilotCLIPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsInfoBox(
+                title: "Copilot CLI uses local lifecycle hooks",
+                message: "Agent Light stores compact status metadata only. It does not store prompts, tool inputs, tool output, or model responses."
+            )
+
+            SettingsGroup(title: "Copilot CLI hooks") {
+                SettingsRow(
+                    title: copilotHookStatusTitle,
+                    subtitle: copilotHookStatusSubtitle,
+                    systemImage: copilotHookStatusIcon
+                ) {
+                    HStack(spacing: 8) {
+                        Button {
+                            installCopilotHooks()
+                        } label: {
+                            Label(copilotHookStatus == .needsReinstall ? "Reinstall" : "Install", systemImage: "plus")
+                        }
+                        .disabled(copilotHookStatus == .installed || copilotHookStatus == .conflict)
+
+                        Button {
+                            removeCopilotHooks()
+                        } label: {
+                            Label("Remove", systemImage: "minus")
+                        }
+                        .disabled(copilotHookStatus == .notInstalled || copilotHookStatus == .conflict)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                SettingsDivider()
+
+                SettingsRow(
+                    title: "Configuration file",
+                    subtitle: CopilotHookInstaller.defaultHooksURL.path,
+                    systemImage: "doc.text"
+                ) {
+                    Text("User hook")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                if let copilotHookMessage {
+                    SettingsDivider()
+
+                    Text(copilotHookMessage)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                }
+            }
+
+            SettingsInfoBox(
+                title: "Start a new Copilot CLI session after changes",
+                message: "Copilot loads user hooks when a session starts. Agent Light does not install, sign in to, or update Copilot CLI itself."
+            )
         }
     }
 
@@ -347,8 +443,8 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsInfoBox(
-                        title: "Claude Code completion",
-                        message: "With hooks enabled, Agent Light waits for Claude Code's idle prompt instead of treating subtask or tool-batch endings as finished."
+                        title: "Hook completion events",
+                        message: "Claude Code and Copilot CLI use explicit main-turn completion events, so subtask or tool endings do not create false completion alerts."
                     )
                 }
                 .disabled(!settings.notificationsEnabled)
@@ -403,7 +499,7 @@ struct SettingsView: View {
                         Text("Version \(appVersion)")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
-                        Text("A quiet menu bar app that watches local Codex and Claude Code sessions and tells you when work is running, done, blocked, or failed.")
+                        Text("A quiet menu bar app that watches local Codex, Claude Code, and Copilot CLI sessions and tells you when work is running, done, blocked, or failed.")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
@@ -482,6 +578,37 @@ struct SettingsView: View {
             return "Hooks mode is selected, but hook entries are not installed yet."
         }
         return settings.claudeCodeStatusMode.description
+    }
+
+    private var copilotHookStatusTitle: String {
+        switch copilotHookStatus {
+        case .notInstalled: return "Hooks not installed"
+        case .installed: return "Hooks installed"
+        case .needsReinstall: return "Hooks need reinstalling"
+        case .conflict: return "Hook file conflict"
+        }
+    }
+
+    private var copilotHookStatusSubtitle: String {
+        switch copilotHookStatus {
+        case .notInstalled:
+            return "Install the user hook to monitor local Copilot CLI sessions."
+        case .installed:
+            return "New Copilot CLI sessions will report status to Agent Light."
+        case .needsReinstall:
+            return "The app path or required event entries changed. Reinstall the hook."
+        case .conflict:
+            return "Agent Light will not overwrite an unrelated agent-light.json file."
+        }
+    }
+
+    private var copilotHookStatusIcon: String {
+        switch copilotHookStatus {
+        case .installed: return "checkmark.seal"
+        case .needsReinstall: return "arrow.clockwise.circle"
+        case .conflict: return "exclamationmark.triangle"
+        case .notInstalled: return "link.badge.plus"
+        }
     }
 
     private var notificationPermissionSubtitle: String {
@@ -574,6 +701,32 @@ struct SettingsView: View {
         }
     }
 
+    private func refreshCopilotHookStatus() {
+        copilotHookStatus = CopilotHookInstaller.status(hookBinaryURL: copilotHookBinaryURL)
+    }
+
+    private func installCopilotHooks() {
+        do {
+            try CopilotHookInstaller.install(hookBinaryURL: copilotHookBinaryURL)
+            refreshCopilotHookStatus()
+            copilotHookMessage = "Copilot CLI hooks are installed. Start a new Copilot CLI session to begin reporting status."
+        } catch {
+            refreshCopilotHookStatus()
+            copilotHookMessage = error.localizedDescription
+        }
+    }
+
+    private func removeCopilotHooks() {
+        do {
+            try CopilotHookInstaller.remove()
+            refreshCopilotHookStatus()
+            copilotHookMessage = "Copilot CLI hooks and Agent Light's cached Copilot status files were removed."
+        } catch {
+            refreshCopilotHookStatus()
+            copilotHookMessage = error.localizedDescription
+        }
+    }
+
     private func sendTestNotification() {
         let center = UNUserNotificationCenter.current()
 
@@ -628,13 +781,18 @@ struct SettingsView: View {
         case let (.some(version), .none):
             return version
         default:
-            return "0.1.4"
+            return "0.1.5"
         }
     }
 
     private var claudeHookBinaryURL: URL {
         Bundle.main.bundleURL
             .appendingPathComponent("Contents/MacOS/AgentClaudeHook")
+    }
+
+    private var copilotHookBinaryURL: URL {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/AgentCopilotHook")
     }
 
     private var isUsingDefaultStatusFile: Bool {
@@ -666,7 +824,7 @@ struct SettingsView: View {
 
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
-    case claudeCode
+    case agents
     case notifications
     case advanced
     case about
@@ -677,8 +835,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "General"
-        case .claudeCode:
-            return "Claude Code"
+        case .agents:
+            return "Agents"
         case .notifications:
             return "Notification"
         case .advanced:
@@ -692,8 +850,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "slider.horizontal.3"
-        case .claudeCode:
-            return "claude.code.brand"
+        case .agents:
+            return "person.2"
         case .notifications:
             return "bell"
         case .advanced:

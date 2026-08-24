@@ -5,6 +5,11 @@ import SwiftUI
 
 @MainActor
 final class StatusBarController: NSObject, NSWindowDelegate {
+    private enum PanelAnchor {
+        case statusItem
+        case screenRect(NSRect)
+    }
+
     private let statusItem: NSStatusItem
     private let store: StatusStore
     private let settings: AppSettings
@@ -13,6 +18,7 @@ final class StatusBarController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var settingsWindowController: NSWindowController?
     private var onboardingWindowController: NSWindowController?
+    private var panelAnchor: PanelAnchor = .statusItem
     private var cancellables: Set<AnyCancellable> = []
 
     init(store: StatusStore, settings: AppSettings, updateChecker: UpdateChecker) {
@@ -54,7 +60,7 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         }
 
         button.target = self
-        button.action = #selector(togglePanel)
+        button.action = #selector(toggleMenuPanel)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
@@ -79,6 +85,13 @@ final class StatusBarController: NSObject, NSWindowDelegate {
             .store(in: &cancellables)
 
         settings.$orientation
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshPanelContent()
+            }
+            .store(in: &cancellables)
+
+        settings.$desktopLightVisible
             .dropFirst()
             .sink { [weak self] _ in
                 self?.refreshPanelContent()
@@ -120,9 +133,9 @@ final class StatusBarController: NSObject, NSWindowDelegate {
                     await self?.updateChecker.checkIfNeeded(force: true)
                 }
             },
-            showClaudeCodeSettings: { [weak self] in
+            showAgentSettings: { [weak self] in
                 self?.closePanel()
-                self?.showSettings(selectedTab: .claudeCode)
+                self?.showSettings(selectedTab: .agents)
             },
             showOnboarding: { [weak self] in
                 self?.closePanel()
@@ -131,6 +144,11 @@ final class StatusBarController: NSObject, NSWindowDelegate {
             showSettings: { [weak self] in
                 self?.closePanel()
                 self?.showSettings()
+            },
+            toggleDesktopLight: { [weak self] in
+                guard let self else { return }
+                self.settings.desktopLightVisible.toggle()
+                self.closePanel()
             },
             quit: {
                 NSApp.terminate(nil)
@@ -149,13 +167,12 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         guard let panel else { return }
         let size = currentPanelSize()
         var frame = panel.frame
-        let oldMaxY = frame.maxY
         frame.size = size
-        frame.origin.y = oldMaxY - size.height
+        frame.origin = panelOrigin(size: size, anchor: panelAnchor)
         panel.setFrame(frame, display: true)
     }
 
-    @objc private func togglePanel() {
+    @objc private func toggleMenuPanel() {
         if panel?.isVisible == true {
             closePanel()
         } else {
@@ -164,10 +181,20 @@ final class StatusBarController: NSObject, NSWindowDelegate {
     }
 
     private func showPanel() {
-        guard let button = statusItem.button else {
-            return
-        }
+        panelAnchor = .statusItem
+        showPanel(anchor: panelAnchor)
+    }
 
+    func togglePanel(relativeTo screenRect: NSRect) {
+        if panel?.isVisible == true {
+            closePanel()
+        } else {
+            panelAnchor = .screenRect(screenRect)
+            showPanel(anchor: panelAnchor)
+        }
+    }
+
+    private func showPanel(anchor: PanelAnchor) {
         let panel = panel ?? makePanel()
         self.panel = panel
         if let controller = panel.contentViewController as? NSHostingController<StatusPanelView> {
@@ -175,7 +202,7 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         }
         let size = currentPanelSize()
         panel.setContentSize(size)
-        panel.setFrameOrigin(panelOrigin(size: size, relativeTo: button))
+        panel.setFrameOrigin(panelOrigin(size: size, anchor: anchor))
         panel.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -206,19 +233,39 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         return NSSize(width: preferredPanelWidth(), height: height)
     }
 
-    private func panelOrigin(size: NSSize, relativeTo button: NSStatusBarButton) -> NSPoint {
-        guard let window = button.window else {
-            return .zero
-        }
+    private func panelOrigin(size: NSSize, anchor: PanelAnchor) -> NSPoint {
+        switch anchor {
+        case .statusItem:
+            guard let button = statusItem.button,
+                  let window = button.window else {
+                return .zero
+            }
 
-        let buttonFrame = button.convert(button.bounds, to: nil)
-        let screenFrame = window.convertToScreen(buttonFrame)
-        let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        let margin: CGFloat = 6
-        var x = screenFrame.midX - size.width / 2
-        x = min(max(x, screen.minX + margin), screen.maxX - size.width - margin)
-        let y = screenFrame.minY - size.height - 6
-        return NSPoint(x: x, y: max(y, screen.minY + margin))
+            let buttonFrame = button.convert(button.bounds, to: nil)
+            let screenFrame = window.convertToScreen(buttonFrame)
+            let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+            let margin: CGFloat = 6
+            var x = screenFrame.midX - size.width / 2
+            x = min(max(x, screen.minX + margin), screen.maxX - size.width - margin)
+            let y = screenFrame.minY - size.height - 6
+            return NSPoint(x: x, y: max(y, screen.minY + margin))
+
+        case .screenRect(let screenRect):
+            return DesktopLightLayout.adjacentPanelOrigin(
+                panelSize: size,
+                anchorFrame: screenRect,
+                visibleFrames: orderedVisibleFrames()
+            )
+        }
+    }
+
+    private func orderedVisibleFrames() -> [NSRect] {
+        var frames = NSScreen.screens.map(\.visibleFrame)
+        guard let mainFrame = NSScreen.main?.visibleFrame,
+              let index = frames.firstIndex(of: mainFrame) else { return frames }
+        frames.remove(at: index)
+        frames.insert(mainFrame, at: 0)
+        return frames
     }
 
     private func closePanel() {
@@ -227,15 +274,6 @@ final class StatusBarController: NSObject, NSWindowDelegate {
 
     func windowDidResignKey(_ notification: Notification) {
         closePanel()
-    }
-
-    static func claudeCodeModeLabel(settings: AppSettings) -> String {
-        switch settings.claudeCodeStatusMode {
-        case .automatic:
-            return "Transcript"
-        case .hooks:
-            return ClaudeHookInstaller.isInstalled() ? "Hooks" : "Hooks missing"
-        }
     }
 
     static func lastUpdatedText(_ lastUpdated: Date?) -> String {
@@ -257,10 +295,10 @@ final class StatusBarController: NSObject, NSWindowDelegate {
             + textWidth(Self.lastUpdatedText(store.lastUpdated), size: 12, weight: .medium)
             + 92
 
-        let claudeModeWidth = textWidth("Claude Code mode", size: 13, weight: .medium)
-            + textWidth(Self.claudeCodeModeLabel(settings: settings), size: 11, weight: .medium)
+        let agentIntegrationsWidth = textWidth("Agent integrations", size: 13, weight: .medium)
+            + textWidth("Configure", size: 11, weight: .medium)
             + 112
-        width = max(width, claudeModeWidth)
+        width = max(width, agentIntegrationsWidth)
 
         if let update = updateChecker.availableUpdate {
             width = max(width, textWidth("Agent Light \(update.version) is available", size: 12, weight: .semibold) + 122)
@@ -295,7 +333,8 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         if onboardingWindowController == nil {
             let controller = NSHostingController(rootView: OnboardingView(
                 settings: settings,
-                hookBinaryURL: claudeHookBinaryURL,
+                claudeHookBinaryURL: claudeHookBinaryURL,
+                copilotHookBinaryURL: copilotHookBinaryURL,
                 onFinish: { [weak self] in
                     self?.onboardingWindowController?.close()
                 }
@@ -310,7 +349,8 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         } else if let controller = onboardingWindowController?.contentViewController as? NSHostingController<OnboardingView> {
             controller.rootView = OnboardingView(
                 settings: settings,
-                hookBinaryURL: claudeHookBinaryURL,
+                claudeHookBinaryURL: claudeHookBinaryURL,
+                copilotHookBinaryURL: copilotHookBinaryURL,
                 onFinish: { [weak self] in
                     self?.onboardingWindowController?.close()
                 }
@@ -345,6 +385,11 @@ final class StatusBarController: NSObject, NSWindowDelegate {
         Bundle.main.bundleURL
             .appendingPathComponent("Contents/MacOS/AgentClaudeHook")
     }
+
+    private var copilotHookBinaryURL: URL {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/AgentCopilotHook")
+    }
 }
 
 private final class StatusPanel: NSPanel {
@@ -362,9 +407,10 @@ private struct StatusPanelView: View {
     let copyText: (String) -> Void
     let viewRelease: (AppUpdate) -> Void
     let checkForUpdates: () -> Void
-    let showClaudeCodeSettings: () -> Void
+    let showAgentSettings: () -> Void
     let showOnboarding: () -> Void
     let showSettings: () -> Void
+    let toggleDesktopLight: () -> Void
     let quit: () -> Void
 
     @State private var selectedSessionID: String?
@@ -450,12 +496,12 @@ private struct StatusPanelView: View {
             Divider()
 
             VStack(spacing: 4) {
-                ClaudeCodeModePopoverRow(
-                    modeLabel: StatusBarController.claudeCodeModeLabel(settings: settings),
-                    action: showClaudeCodeSettings
+                AgentIntegrationsPopoverRow(
+                    action: showAgentSettings
                 )
                 CommandPopoverRow(title: "Getting Started...", symbolName: "sparkles", action: showOnboarding)
                 CommandPopoverRow(title: updateCheckTitle, symbolName: "arrow.clockwise", action: checkForUpdates)
+                DesktopLightPopoverRow(isVisible: settings.desktopLightVisible, action: toggleDesktopLight)
                 CommandPopoverRow(title: "Settings...", symbolName: "gearshape", action: showSettings)
             }
             .padding(.horizontal, 9)
@@ -754,6 +800,8 @@ private struct SessionDetailPanelView: View {
             return "Claude Code"
         case "codex":
             return "Codex"
+        case "copilot-cli":
+            return "Copilot CLI"
         default:
             return session.provider
         }
@@ -818,8 +866,7 @@ private struct SessionDetailAction: View {
     }
 }
 
-private struct ClaudeCodeModePopoverRow: View {
-    let modeLabel: String
+private struct AgentIntegrationsPopoverRow: View {
     let action: () -> Void
 
     @State private var isHovering = false
@@ -827,20 +874,19 @@ private struct ClaudeCodeModePopoverRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 11) {
-                Image(nsImage: StatusBarController.providerIconImage(provider: "claude-code"))
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 15, height: 15)
+                Image(systemName: "person.2")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
                     .frame(width: 26, height: 26)
 
-                Text("Claude Code mode")
+                Text("Agent integrations")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Spacer(minLength: 14)
 
-                Text(modeLabel)
+                Text("Configure")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 9)
@@ -899,6 +945,45 @@ private struct CommandPopoverRow: View {
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+}
+
+private struct DesktopLightPopoverRow: View {
+    let isVisible: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                Image(systemName: "rectangle.on.rectangle")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 26, height: 26)
+
+                Text("Desktop Light")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if isVisible {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 32)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isHovering ? Color.accentColor.opacity(0.10) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
 

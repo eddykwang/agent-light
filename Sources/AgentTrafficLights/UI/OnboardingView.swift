@@ -2,23 +2,33 @@ import SwiftUI
 
 struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
-    let hookBinaryURL: URL
+    let claudeHookBinaryURL: URL
+    let copilotHookBinaryURL: URL
     let onFinish: () -> Void
 
     @State private var step: OnboardingStep = .welcome
     @State private var selectedOrientation: TrafficLightOrientation
+    @State private var selectedAgent: AgentIntegration = .claudeCode
     @State private var selectedClaudeMode: ClaudeCodeStatusMode
     @State private var hooksInstalled: Bool
+    @State private var copilotHooksInstalled: Bool
     @State private var message: String?
     @State private var showsHookInstallPanel = false
 
-    init(settings: AppSettings, hookBinaryURL: URL, onFinish: @escaping () -> Void) {
+    init(
+        settings: AppSettings,
+        claudeHookBinaryURL: URL,
+        copilotHookBinaryURL: URL,
+        onFinish: @escaping () -> Void
+    ) {
         self.settings = settings
-        self.hookBinaryURL = hookBinaryURL
+        self.claudeHookBinaryURL = claudeHookBinaryURL
+        self.copilotHookBinaryURL = copilotHookBinaryURL
         self.onFinish = onFinish
         _selectedOrientation = State(initialValue: settings.orientation)
         _selectedClaudeMode = State(initialValue: settings.claudeCodeStatusMode)
         _hooksInstalled = State(initialValue: ClaudeHookInstaller.isInstalled())
+        _copilotHooksInstalled = State(initialValue: CopilotHookInstaller.status(hookBinaryURL: copilotHookBinaryURL) == .installed)
     }
 
     var body: some View {
@@ -34,8 +44,8 @@ struct OnboardingView: View {
                             welcomePage
                         case .signal:
                             signalPage
-                        case .claudeCode:
-                            claudeCodePage
+                        case .agents:
+                            agentsPage
                         case .complete:
                             completePage
                         }
@@ -61,6 +71,7 @@ struct OnboardingView: View {
             selectedOrientation = settings.orientation
             selectedClaudeMode = settings.claudeCodeStatusMode
             reconcileHooksMode()
+            refreshCopilotHooksStatus()
         }
     }
 
@@ -120,10 +131,10 @@ struct OnboardingView: View {
                 )
 
                 PlatformCard(
-                    systemImage: "plus",
-                    title: "More Coming",
-                    subtitle: "Planned",
-                    message: "Additional local agent integrations will fit into the same menu-bar signal."
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    title: "Copilot CLI",
+                    subtitle: "Supported with hooks",
+                    message: "Uses optional local lifecycle hooks for precise status and completion events."
                 )
             }
 
@@ -163,16 +174,36 @@ struct OnboardingView: View {
         }
     }
 
-    private var claudeCodePage: some View {
+    private var agentsPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Choose Claude Code mode")
+                Text("Connect your coding agents")
                     .font(.system(size: 20, weight: .semibold))
-                Text("This step is only for Claude Code users. If you do not use Claude Code, choose Transcript and finish setup.")
+                Text("Claude Code works from transcripts by default. Copilot CLI requires an optional local hook installation.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
 
+            Picker("Agent integration", selection: $selectedAgent) {
+                ForEach(AgentIntegration.allCases) { agent in
+                    Text(agent.displayName).tag(agent)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 300)
+
+            switch selectedAgent {
+            case .claudeCode:
+                claudeCodeSetup
+            case .copilotCLI:
+                copilotCLISetup
+            }
+        }
+    }
+
+    private var claudeCodeSetup: some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 ClaudeModeCard(
                     title: "Hooks",
@@ -197,13 +228,55 @@ struct OnboardingView: View {
 
             if showsHookInstallPanel {
                 HookInstallPanel(
-                    hookBinaryPath: hookBinaryURL.path,
+                    hookBinaryPath: claudeHookBinaryURL.path,
                     onInstall: installHooks,
                     onUseTranscript: {
                         applyClaudeChoice(.declined)
                     }
                 )
             }
+        }
+    }
+
+    private var copilotCLISetup: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                ClaudeModeCard(
+                    title: "Install Hooks",
+                    subtitle: copilotHooksInstalled ? "Copilot CLI, installed" : "Required for status detection",
+                    message: "Adds a user-level Copilot hook file that reports working, input, completion, and failure states locally.",
+                    badge: "Recommended",
+                    isSelected: copilotHooksInstalled
+                ) {
+                    installCopilotHooks()
+                }
+
+                ClaudeModeCard(
+                    title: "Skip",
+                    subtitle: "Set up later",
+                    message: "Agent Light will not modify Copilot configuration. You can install the hook later from Settings > Agents.",
+                    badge: nil,
+                    isSelected: !copilotHooksInstalled
+                ) {
+                    applyCopilotChoice(.skipped)
+                }
+            }
+
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "lock")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Agent Light writes only compact status metadata. Prompts, tool inputs, tool output, and model responses are not stored.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+            )
         }
     }
 
@@ -233,6 +306,14 @@ struct OnboardingView: View {
                 )
 
                 CompletionReminder(
+                    systemImage: copilotHooksInstalled ? "checkmark.seal" : "link.badge.plus",
+                    title: copilotHooksInstalled ? "Copilot CLI hooks are ready" : "Copilot CLI setup skipped",
+                    message: copilotHooksInstalled
+                        ? "Start a new Copilot CLI session so it can report status to Agent Light."
+                        : "You can install Copilot CLI hooks later from Settings > Agents."
+                )
+
+                CompletionReminder(
                     systemImage: "menubar.rectangle",
                     title: "You can reopen this anytime",
                     message: "Use Getting Started from the Agent Light menu to review these choices."
@@ -253,8 +334,8 @@ struct OnboardingView: View {
             Spacer()
 
             if let next = step.next {
-                Button(step == .claudeCode ? "Next" : "Continue") {
-                    if step == .claudeCode {
+                Button(step == .agents ? "Next" : "Continue") {
+                    if step == .agents {
                         reconcileHooksMode()
                     }
                     step = next
@@ -271,7 +352,7 @@ struct OnboardingView: View {
     }
 
     private var canContinue: Bool {
-        step != .claudeCode || !showsHookInstallPanel
+        step != .agents || selectedAgent != .claudeCode || !showsHookInstallPanel
     }
 
     private func selectOrientation(_ orientation: TrafficLightOrientation) {
@@ -298,7 +379,7 @@ struct OnboardingView: View {
 
     private func installHooks() {
         do {
-            try ClaudeHookInstaller.install(hookBinaryURL: hookBinaryURL)
+            try ClaudeHookInstaller.install(hookBinaryURL: claudeHookBinaryURL)
             applyClaudeChoice(.installed)
         } catch {
             applyClaudeChoice(.failed(error.localizedDescription))
@@ -331,6 +412,26 @@ struct OnboardingView: View {
         settings.claudeCodeStatusMode = .automatic
         showsHookInstallPanel = false
         message = "Transcript mode selected until Claude Code hooks are installed."
+    }
+
+    private func refreshCopilotHooksStatus() {
+        copilotHooksInstalled = CopilotHookInstaller.status(hookBinaryURL: copilotHookBinaryURL) == .installed
+    }
+
+    private func installCopilotHooks() {
+        do {
+            try CopilotHookInstaller.install(hookBinaryURL: copilotHookBinaryURL)
+            applyCopilotChoice(.installed)
+        } catch {
+            applyCopilotChoice(.failed(error.localizedDescription))
+        }
+    }
+
+    private func applyCopilotChoice(_ outcome: CopilotHookChoiceOutcome) {
+        let resolution = CopilotHookChoiceResolution.resolve(outcome)
+        refreshCopilotHooksStatus()
+        copilotHooksInstalled = resolution.hooksInstalled || copilotHooksInstalled
+        message = resolution.message
     }
 
     private func finish() {

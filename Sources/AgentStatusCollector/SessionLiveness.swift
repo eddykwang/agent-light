@@ -122,11 +122,14 @@ public struct LsofLivenessFilter: LivenessFilter {
     }
 
     private func isAlive(session: RawSession, now: Date, ccWorkingIDs: Set<String>) -> Bool {
+        // Event-backed sources own their pruning policy and already encode whether a session is
+        // current. Trust them without applying file-handle/mtime heuristics meant for transcripts.
+        if session.isEventSignal {
+            return true
+        }
+
         switch session.provider {
         case "claude-code":
-            if session.isEventSignal {
-                return true
-            }
             if session.status == .working {
                 return ccWorkingIDs.contains(session.id)
             }

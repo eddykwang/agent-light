@@ -3,7 +3,7 @@ import Foundation
 enum OnboardingStep: Int, CaseIterable, Identifiable {
     case welcome
     case signal
-    case claudeCode
+    case agents
     case complete
 
     var id: Int { rawValue }
@@ -14,8 +14,8 @@ enum OnboardingStep: Int, CaseIterable, Identifiable {
             return "Welcome"
         case .signal:
             return "Signal"
-        case .claudeCode:
-            return "Claude Code"
+        case .agents:
+            return "Agents"
         case .complete:
             return "Complete"
         }
@@ -36,6 +36,37 @@ enum OnboardingStep: Int, CaseIterable, Identifiable {
         }
 
         return Self.allCases[Self.allCases.index(before: index)]
+    }
+}
+
+enum CopilotHookChoiceOutcome: Equatable {
+    case installed
+    case skipped
+    case failed(String)
+}
+
+struct CopilotHookChoiceResolution: Equatable {
+    let hooksInstalled: Bool
+    let message: String
+
+    static func resolve(_ outcome: CopilotHookChoiceOutcome) -> CopilotHookChoiceResolution {
+        switch outcome {
+        case .installed:
+            return CopilotHookChoiceResolution(
+                hooksInstalled: true,
+                message: "Copilot CLI hooks are installed. Start a new session to begin reporting status."
+            )
+        case .skipped:
+            return CopilotHookChoiceResolution(
+                hooksInstalled: false,
+                message: "Copilot CLI setup skipped. You can install hooks later from Settings."
+            )
+        case .failed(let reason):
+            return CopilotHookChoiceResolution(
+                hooksInstalled: false,
+                message: "Agent Light could not install Copilot CLI hooks: \(reason)"
+            )
+        }
     }
 }
 

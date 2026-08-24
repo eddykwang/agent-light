@@ -68,7 +68,7 @@ final class SessionAlertNotifier {
         }
 
         for previousSession in lastSessionsByID.values {
-            guard previousSession.provider != "claude-code",
+            guard !usesCompletionMarker(provider: previousSession.provider),
                   previousSession.status == .working,
                   currentSessionsByID[previousSession.id] == nil else {
                 continue
@@ -82,10 +82,10 @@ final class SessionAlertNotifier {
             return false
         }
 
-        if session.provider == "claude-code" {
-            // Edge-trigger on the discrete `Stop` completion marker: fire exactly once when a
+        if usesCompletionMarker(provider: session.provider) {
+            // Edge-trigger on the provider's discrete completion marker: fire exactly once when a
             // strictly newer `completedAt` appears. This is immune to working/idle flapping and
-            // fires the moment the turn ends, instead of waiting for Claude's delayed idle_prompt.
+            // fires the moment the turn ends instead of waiting for a later idle observation.
             guard let completedAt = session.completedAt else { return false }
             guard let previousCompletedAt = previous.completedAt else { return true }
             return completedAt > previousCompletedAt
@@ -105,7 +105,7 @@ final class SessionAlertNotifier {
         }
 
         return lastSessionsByID.values.contains { previousSession in
-            previousSession.provider != "claude-code"
+            !usesCompletionMarker(provider: previousSession.provider)
                 && previousSession.status == .working
                 && currentSessionsByID[previousSession.id] == nil
         }
@@ -203,9 +203,15 @@ final class SessionAlertNotifier {
             return "Claude Code"
         case "codex":
             return "Codex"
+        case "copilot-cli":
+            return "Copilot CLI"
         default:
             return provider
         }
+    }
+
+    private func usesCompletionMarker(provider: String) -> Bool {
+        provider == "claude-code" || provider == "copilot-cli"
     }
 
     private func cleanedDetail(_ detail: String?, fallback: String) -> String {

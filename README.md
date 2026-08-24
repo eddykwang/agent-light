@@ -53,8 +53,46 @@ unidentified developer warning the first time you open the app.
 
 ## Screenshots
 
+### Live status
+
 <p align="center">
   <img src="docs/assets/agent-light-demo.gif" alt="Agent Light menu bar status demo" width="720">
+</p>
+
+### Desktop Light
+
+The optional Desktop Light keeps the aggregate traffic-light state visible
+above normal windows. It supports horizontal and vertical layouts, proportional
+corner resizing, free positioning, and one-click access to the status
+panel.
+
+<table>
+  <tr>
+    <td align="center" width="60%">
+      <img src="docs/assets/desktop-light-horizontal.jpg" alt="Agent Light horizontal Desktop Light showing the green working state" width="284">
+    </td>
+    <td align="center" width="40%">
+      <img src="docs/assets/desktop-light-vertical.jpg" alt="Agent Light vertical Desktop Light showing the green working state" height="284">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Horizontal layout</sub></td>
+    <td align="center"><sub>Vertical layout with orientation-specific lighting</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/assets/settings-desktop-light-v015.jpg" alt="Agent Light General settings with Desktop Light enabled" width="780">
+</p>
+
+### Local agent integrations
+
+Agent Light can use local lifecycle hooks for more precise Claude Code and
+GitHub Copilot CLI status without storing prompts, tool inputs, tool output, or
+model responses.
+
+<p align="center">
+  <img src="docs/assets/settings-copilot-cli-v015.jpg" alt="Agent Light Copilot CLI lifecycle hook settings" width="780">
 </p>
 
 ## Features

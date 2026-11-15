@@ -4,31 +4,48 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing draft release tag to verify (for example v0.1.6)"
+        required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  macos-unsigned:
-    name: macOS unsigned build
+  tests:
     runs-on: macos-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Run tests
-        run: swift test
-
-      - name: Build unsigned release zip
-        run: bash script/package_release.sh "$GITHUB_REF_NAME"
-
-      - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/Agent-Light-*.zip --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" dist/Agent-Light-*.zip --title "$GITHUB_REF_NAME" --generate-notes
-          fi
+          swift test
+          python3 -m unittest discover -s Tests/ReleaseScriptsTests -v
+
+  verify-signed-release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: tests
+    # GitHub requires push access to read draft release assets.
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      APPLE_TEAM_ID: P4P956A63K
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify locally signed draft release
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          archive="Agent-Light-$RELEASE_VERSION-macOS.zip"
+          gh release download "$RELEASE_VERSION" --pattern "$archive" --dir "$RUNNER_TEMP/release"
+          ditto -x -k "$RUNNER_TEMP/release/$archive" "$RUNNER_TEMP/verify"
+          app="$RUNNER_TEMP/verify/Agent Light.app"
+          actual_version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          [[ "$actual_version" == "${RELEASE_VERSION#v}" ]]
+          bash script/verify_release.sh "$app"
+          shasum -a 256 "$RUNNER_TEMP/release/$archive"

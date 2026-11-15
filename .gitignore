@@ -16,6 +16,14 @@ dist/
 .env
 .env.*
 *.log
+*.p12
+*.pfx
+*.p8
+*.pem
+*.key
+*.keychain
+*.keychain-db
+__pycache__/
 
 # macOS noise
 .DS_Store

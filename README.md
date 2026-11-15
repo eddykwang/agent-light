@@ -48,8 +48,10 @@ Or download the latest zip from
 [GitHub Releases](https://github.com/eddykwang/agent-light/releases/latest),
 unzip it, and move `Agent Light.app` to `/Applications`.
 
-Current release builds are unsigned and not notarized, so macOS may show an
-unidentified developer warning the first time you open the app.
+Starting with v0.1.6, release builds are Developer ID signed and notarized by
+Apple, with the notarization ticket attached. Normal macOS first-open
+confirmations and permission requests may still appear. Older release ZIPs
+remain unsigned and unnotarized. The current release is for Apple Silicon Macs.
 
 ## Screenshots
 
@@ -227,25 +229,48 @@ file for the menu bar app to display.
 Download the latest build from the
 [latest release](https://github.com/eddykwang/agent-light/releases/latest).
 
-GitHub release builds are currently unsigned and not notarized. The release zip
-uses an ad-hoc signature only to keep the app bundle internally valid.
+From v0.1.6 onward, release ZIPs are Developer ID signed, notarized by Apple and
+include a stapled notarization ticket. No quarantine-removal command is needed.
+Releases up to v0.1.5 were ad-hoc signed and not notarized.
 
-Because the app is not Developer ID signed, macOS may show an unidentified
-developer warning the first time you open it. This is expected for the current
-early release builds.
+The release pipeline now requires a **Developer ID Application** certificate
+with its private key and a validated `notarytool` Keychain profile. It signs all
+four executables with Hardened Runtime and a secure timestamp, notarizes the app,
+staples the ticket, then repackages and verifies the final ZIP. Any failure stops
+publication; there is no unsigned fallback.
 
-Create a local release zip:
-
-```bash
-./script/package_release.sh v0.1.5
-```
-
-Tagging a version also publishes the unsigned zip through GitHub Actions:
+After preparing the certificate and Keychain profile, create a local release ZIP
+(replace the example identity and Team ID with your own):
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+export SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)'
+export APPLE_TEAM_ID='YOURTEAMID'
+export NOTARY_PROFILE='agent-light-release'
+./script/package_release.sh v0.1.6
 ```
+
+The output is `dist/Agent-Light-v0.1.6-macOS.zip`. Never put certificate private
+keys, `.p12` / `.p8` files, passwords or API tokens in the repository or release
+assets. Public certificate chains embedded in code signatures are expected.
+
+Signing and notarization run on the maintainer's Mac. Private keys and Apple
+credentials stay in the local Keychain and are never uploaded to GitHub.
+GitHub Actions runs tests on version tags. Its manual **Release** workflow
+downloads an existing draft release ZIP and independently checks its version,
+signatures, Team ID, notarization ticket and Gatekeeper acceptance.
+
+After committing and pushing the release changes, prepare a new tag and draft:
+
+```bash
+git tag v0.1.6
+git push origin v0.1.6
+gh release create v0.1.6 dist/Agent-Light-v0.1.6-macOS.zip --draft --verify-tag --title v0.1.6 --generate-notes
+gh workflow run release.yml -f version=v0.1.6
+```
+
+Wait for the workflow and local installation checks to pass before publishing
+the draft. Then update the Homebrew cask URL, version and SHA256 from the actual
+published ZIP. See the [signing and release checklist](docs/signing-release-plan.md).
 
 ## Run Locally
 

@@ -19,8 +19,10 @@ brew tap eddykwang/tap
 brew install --cask agent-light
 ```
 
-Release builds are currently ad-hoc signed, unsigned by Developer ID, and not
-notarized.
+Release v0.1.6 is Developer ID signed, notarized and stapled. Older releases
+up to v0.1.5 remain ad-hoc signed and not notarized; see
+`docs/signing-release-plan.md` for prerequisites and remaining validation.
+Never commit or upload signing private keys, `.p12` / `.p8` files or credentials.
 
 ## Executables
 
@@ -326,12 +328,15 @@ Expected email:
 
 ```bash
 swift test
+python3 -m unittest discover -s Tests/ReleaseScriptsTests -v
 ```
 
 3. Build a local release zip if you want to inspect it before tagging:
 
 ```bash
-./script/package_release.sh v0.1.5
+SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+APPLE_TEAM_ID="YOURTEAMID" NOTARY_PROFILE="agent-light-release" \
+./script/package_release.sh v0.1.6
 ```
 
 4. Commit release changes.
@@ -339,13 +344,17 @@ swift test
 5. Create and push a new tag:
 
 ```bash
-git tag v0.1.5
+git tag v0.1.6
 git push origin master
-git push origin v0.1.5
+git push origin v0.1.6
 ```
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`. The workflow runs
-tests, builds the unsigned zip, and creates or updates the GitHub release.
+Signing and notarization run locally using Keychain credentials; do not export
+private keys or Apple credentials to GitHub. Pushing a new `v*` tag runs tests.
+Upload the locally verified ZIP to a draft GitHub release, then manually run
+`.github/workflows/release.yml` with that tag to independently verify its asset.
+Only publish the draft after the workflow and local installation checks pass.
+Missing local signing or notarization credentials must fail closed.
 
 Do not reuse old tags for normal releases. Use a new tag for each public build.
 Only force-push a tag when intentionally repairing an early broken release.
@@ -361,14 +370,14 @@ After the GitHub release asset exists, update:
 Set:
 
 ```ruby
-version "0.1.5"
+version "0.1.6"
 sha256 "<release zip sha256>"
 ```
 
 Calculate SHA256 from the release zip:
 
 ```bash
-shasum -a 256 Agent-Light-v0.1.5-macOS-unsigned.zip
+shasum -a 256 Agent-Light-v0.1.6-macOS.zip
 ```
 
 Commit and push the tap:
@@ -376,7 +385,7 @@ Commit and push the tap:
 ```bash
 cd /Users/eddywang/Documents/homebrew-tap
 git add Casks/agent-light.rb
-git commit -m "agent-light 0.1.5"
+git commit -m "agent-light 0.1.6"
 git push origin main
 ```
 
@@ -399,15 +408,10 @@ Homebrew may require trust for this tap:
 brew trust eddykwang/tap
 ```
 
-## Unsigned Build Caveat
+## Signing and First Launch
 
-Until the app is Developer ID signed and notarized, users can see Apple's
-unidentified developer warning on first launch.
-
-The tap caveat currently suggests:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Agent Light.app"
-```
-
-Keep README, release notes, and tap caveats consistent about this limitation.
+Release v0.1.6 and later must be Developer ID signed, notarized and stapled.
+The cask URL is `Agent-Light-v#{version}-macOS.zip`. Keep the cask and README
+consistent, and never disable quarantine to make installation checks pass.
+Normal macOS download confirmations, notification permission and login-item
+approval may still appear. Older release assets remain unsigned and unnotarized.

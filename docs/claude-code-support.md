@@ -10,7 +10,10 @@ Agent Light supports Claude Code through two local modes:
 
 The menu bar app still reads only Agent Light's shared status file. It does not
 call Claude Code, does not call an LLM, and does not add anything to Claude
-Code's model context.
+Code's model context. Update checks separately contact GitHub for release information.
+
+`CLAUDE_CONFIG_DIR` changes the transcript/settings root. Agent Light must inherit
+it as well as Claude Code; see [custom configuration directories](usage.md#custom-configuration-directories).
 
 ## Default Mode
 
@@ -61,7 +64,9 @@ The helper maps that event to a compact local status file under:
 ```
 
 The collector reads those hook status files before transcript files, so hook
-status wins when both sources describe the same Claude Code session.
+status takes priority over a lagging transcript for the same Claude Code session.
+Clearly newer transcript data can recover when hooks stop updating. Child-scoped
+events cannot replace or delete the main session's hook state.
 
 Hooks mode improves detection for states that transcript mode cannot always see,
 especially permission prompts, explicit input requests, stop events, and failed
@@ -69,14 +74,11 @@ stop events.
 
 ### Hook Privacy
 
-Agent Light hooks are status hooks, not transcript readers.
-
-- They do not send prompts to Agent Light.
-- They do not send tool inputs to Agent Light.
-- They do not send model responses to Agent Light.
-- They do not call a network service.
-- They write only local status metadata: session id, workspace path, transcript
-  path, status, short detail, and update time.
+Claude Code passes lifecycle event JSON to the helper. The helper extracts and
+stores only local status metadata: session id, workspace path, transcript path,
+status, short detail, and timestamps, including the completion marker. It does
+not store prompts, tool inputs, model responses, or transcript contents, and
+does not call a network service.
 
 ## Liveness
 
@@ -96,11 +98,13 @@ Use **Settings... > Agents > Claude Code** for normal install and removal. Insta
 also switches Claude Code status mode to Hooks. Removing hooks switches it back
 to Default.
 
-Claude Code reads hook settings when a session starts. Restart existing Claude
-Code sessions after installing or removing hooks.
+Recent Claude Code versions reload hook settings during a session. Older versions
+may require a restart; start a new session if installation or removal is not picked up.
 
-If you move `Agent Light.app` after installing hooks, install hooks again so the
-stored command points at the new app bundle path.
+If you move `Agent Light.app` or the installed event set is incomplete, Settings
+shows **Hooks need reinstalling**. Install again to repair Agent Light's entries
+at the current app path while preserving other hooks and settings. Invalid
+configuration is not overwritten.
 
 You can also remove Agent Light hook entries from the command line while
 preserving the rest of your Claude Code settings:

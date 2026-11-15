@@ -19,7 +19,7 @@ brew tap eddykwang/tap
 brew install --cask agent-light
 ```
 
-Release v0.1.6 is Developer ID signed, notarized and stapled. Older releases
+Releases v0.1.6 and v0.1.7 are Developer ID signed, notarized and stapled. Older releases
 up to v0.1.5 remain ad-hoc signed and not notarized; see
 `docs/signing-release-plan.md` for prerequisites and remaining validation.
 Never commit or upload signing private keys, `.p12` / `.p8` files or credentials.

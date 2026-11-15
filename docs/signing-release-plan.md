@@ -1,6 +1,6 @@
 # Agent Light 签名与发布计划及验收记录
 
-更新：2026-11-14。v0.1.6 本机签名、公证和 Gatekeeper 验证已完成；公开发布与 Homebrew 安装验收进行中。
+更新：2026-11-14。v0.1.6 已签名、公证并公开发布；本机 Homebrew 升级、重装和启动验收通过。
 
 ## 范围
 
@@ -41,22 +41,32 @@ About 可打开；Claude hooks 已安装，Copilot hooks 未安装。系统显�
 开发包的登录项显示 macOS 找不到 App，需要在最终安装路径复测。
 本机 Homebrew 管理的旧安装包为 v0.1.4，arm64，ad-hoc。
 
-## 发布顺序与剩余验收
+## 发布顺序与验收结果
 
 1. [x] 签名 v0.1.6 已启动；About 版本正确，菜单/设置正常，collector 显示 2 个活跃真实会话。
-2. [ ] 检查待提交文件无私钥、凭据；按仓库规定 git identity 提交并推送代码。
-3. [ ] 使用新 tag v0.1.6，上传明确指定的最终 ZIP 到 draft release。
-4. [ ] 手动运行 Release workflow，验证下载的 draft 包版本、Team、票据、Gatekeeper 和 SHA256。
-5. [ ] 全部通过后公开 draft，下载实际公开 asset，再次验证并确认 checksum。
-6. [ ] 更新 tap cask 的 version、SHA256、URL，移除旧 unsigned / xattr caveat。
-7. [ ] 测试 Homebrew 升级，确认 `/Applications` 中的 v0.1.6 签名、公证、quarantine 和实际启动。
-8. [ ] 提交推送 tap，验证公开安装路径及 GitHub README；记录剩余环境限制。
+2. [x] 暂存文件检查通过；发布代码及 README 已提交并推送，提交 `02643c6`。
+3. [x] 新 tag v0.1.6 已推送，草稿仅上传最终 App ZIP。
+4. [x] [GitHub workflow 43662911649](https://github.com/eddykwang/agent-light/actions/runs/43662911649) 测试与验签全部成功，远端 SHA256 与本地相同。
+5. [x] [v0.1.6 已公开](https://github.com/eddykwang/agent-light/releases/tag/v0.1.6)，未经认证的公开下载成功，下载包验签与 checksum 再次通过。
+6. [x] tap cask 的 version、SHA256、URL 已更新，旧 unsigned / xattr caveat 已移除，并声明 arm64 架构。
+7. [x] `brew update` 后从 v0.1.4 升级至 v0.1.6 成功；`brew reinstall --cask agent-light` 也成功。安装版保留 quarantine，签名、公证及 Gatekeeper 检查通过；两次实际启动均直接打开状态面板，没有观察到安全拦截。
+8. [x] tap 提交 `11c6b7f` 已推送；使用公开 cask 完成升级与重装，GitHub README 已核实更新。
 
 首个签名版本仅构建并验证 Apple Silicon（arm64），不宣称 Intel 支持。
 不清空用户设置，不移除 quarantine，不关闭 Gatekeeper，不静默修改用户 hook。
 新安装路径需要重新安装 hook 时，应明确说明并重启对应代理会话。
 完整 clean-user 首次安装、离线首次启动、真实 Claude/Copilot 事件和登录后自启，
 若无法实际验证，必须保留为未测，不能用单元测试或 spctl 结果冒充。
+
+## 实测边界与已知事项
+
+- 已签名的 Claude/Copilot helper 以临时目录和合成事件实际执行通过：working → idle，生成 completedAt；没有改动用户 hook 配置。
+- 正式安装版通知权限仍为 Allowed。真实通知送达、真实 Claude/Copilot 会话、干净用户首次 onboarding、离线首启和重登录自启未实际验证。
+- 现有用户设置保留；此前登录项显示 notFound 的状态在升级后仍存在，需要用户在 Settings 中重新启用登录项；本次未改变该偏好或系统注册。
+- Homebrew 升级提示 signer changed，属于从 ad-hoc 到 Developer ID 的身份变化。本机本次启动未观察到安全弹窗，但不承诺所有机器没有正常下载确认/权限提示。
+- `brew update` 同时将 Homebrew 更新至 7.0.13，并执行了其常规迁移；随后升级触发默认缓存清理，未改动 Agent Light 用户数据。重装使用 NO_INSTALL_CLEANUP，未执行 zap。
+- 未测试 Intel；发布包四个可执行文件均为 arm64。
+- 公开 Release 仅一个 App ZIP，未包含独立证书、私钥、keychain 或凭据附件。
 
 ## 后续发布命令
 

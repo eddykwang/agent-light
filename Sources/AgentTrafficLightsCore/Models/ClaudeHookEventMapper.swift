@@ -3,10 +3,8 @@ import Foundation
 public enum ClaudeHookEventMapper {
     /// Maps a Claude Code hook payload to a session state.
     ///
-    /// - Parameter notificationType: For `Notification` events only. Claude Code does NOT
-    ///   put the notification type in the JSON payload — it is selected via the hook `matcher`.
-    ///   The hook binary therefore receives the matched type as a command-line argument and
-    ///   passes it here. `input["notification_type"]` is used only as a fallback for tests.
+    /// - Parameter notificationType: Matcher argument retained for older Claude versions.
+    ///   Current versions also supply notification_type in the payload.
     public static func state(
         from input: [String: Any],
         notificationType: String? = nil,
@@ -18,9 +16,16 @@ public enum ClaudeHookEventMapper {
             return nil
         }
 
+        // SubagentStart describes a child spawned by the parent. Other child-scoped events
+        // share session_id and must not overwrite the main conversation's status file.
+        if let agentId = input["agent_id"] as? String, !agentId.isEmpty,
+           eventName != "SubagentStart" {
+            return nil
+        }
+
         guard let (status, detail) = statusAndDetail(
             eventName: eventName,
-            notificationType: notificationType ?? (input["notification_type"] as? String),
+            notificationType: (input["notification_type"] as? String) ?? notificationType,
             input: input
         ) else {
             return nil
@@ -67,7 +72,7 @@ public enum ClaudeHookEventMapper {
         case "StopFailure":
             return (.failed, "Claude Code stop failed")
         default:
-            return (.working, "Claude Code is working")
+            return nil
         }
     }
 

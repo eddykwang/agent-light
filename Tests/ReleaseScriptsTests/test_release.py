@@ -54,7 +54,7 @@ class ReleaseTests(unittest.TestCase):
             (resources / name / 'asset').write_text('asset')
         binaries = self.root / 'binaries'
         binaries.mkdir()
-        for name in ('AgentTrafficLights', 'AgentStatusCollector', 'AgentClaudeHook', 'AgentCopilotHook'):
+        for name in ('AgentTrafficLights', 'AgentStatusCollector', 'AgentClaudeHook', 'AgentCopilotHook', 'AgentCodexHook'):
             (binaries / name).write_text('test executable')
         mocks = self.root / 'mocks'
         mocks.mkdir()
@@ -136,7 +136,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(self.output.exists())
         events = self.events()
         signed = [Path(e[-1]).name for e in events if e[0] == 'codesign' and '--sign' in e]
-        self.assertEqual(signed, ['AgentStatusCollector', 'AgentClaudeHook', 'AgentCopilotHook', 'Agent Light.app'])
+        self.assertEqual(signed, ['AgentStatusCollector', 'AgentClaudeHook', 'AgentCopilotHook', 'AgentCodexHook', 'Agent Light.app'])
         staple = next(i for i, e in enumerate(events) if e[:3] == ['xcrun', 'stapler', 'staple'])
         archives = [i for i, e in enumerate(events) if e[0] == 'ditto' and '-c' in e]
         self.assertEqual(len(archives), 2)

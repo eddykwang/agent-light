@@ -8,7 +8,8 @@ for target in "$APP_BUNDLE" \
   "$APP_BUNDLE/Contents/MacOS/AgentTrafficLights" \
   "$APP_BUNDLE/Contents/MacOS/AgentStatusCollector" \
   "$APP_BUNDLE/Contents/MacOS/AgentClaudeHook" \
-  "$APP_BUNDLE/Contents/MacOS/AgentCopilotHook"; do
+  "$APP_BUNDLE/Contents/MacOS/AgentCopilotHook" \
+  "$APP_BUNDLE/Contents/MacOS/AgentCodexHook"; do
   details="$(codesign --display --verbose=4 "$target" 2>&1)"
   printf '%s\n' "$details" | /usr/bin/grep -Fqx "TeamIdentifier=$APPLE_TEAM_ID"
   printf '%s\n' "$details" | /usr/bin/grep -q '^Authority=Developer ID Application:'

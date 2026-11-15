@@ -5,7 +5,8 @@
 ## 范围
 
 使用 Developer ID 签名和 Apple 公证，继续通过 GitHub / Homebrew 分发。
-不做 Mac App Store 上架或沙盒改造。保留 bundle ID、四个可执行文件、用户设置及既有 hook。
+不做 Mac App Store 上架或沙盒改造。保留 bundle ID、用户设置及既有 hook。
+v0.1.6 包含四个可执行文件；v0.1.7 新增 AgentCodexHook，五个文件均须签名并验证。
 正常的 macOS 下载确认、通知权限和登录项审批仍可能出现。
 
 ## 凭据边界
@@ -73,6 +74,7 @@ About 可打开；Claude hooks 已安装，Copilot hooks 未安装。系统显�
 ```bash
 swift test
 python3 -m unittest discover -s Tests/ReleaseScriptsTests -v
+python3 -m unittest discover -s Tests/HookHelpersTests -v
 SIGNING_IDENTITY='Developer ID Application: Ke Wang (P4P956A63K)' APPLE_TEAM_ID=P4P956A63K NOTARY_PROFILE=agent-light-release ./script/package_release.sh vX.Y.Z
 ```
 

@@ -26,7 +26,7 @@ Never commit or upload signing private keys, `.p12` / `.p8` files or credentials
 
 ## Executables
 
-This package builds four executables and one shared library:
+This package builds five executables and one shared library:
 
 - `AgentTrafficLights`: the menu bar app. Owns SwiftUI/AppKit UI, settings,
   notifications, onboarding, launch-at-login, update checks, and the status
@@ -34,19 +34,21 @@ This package builds four executables and one shared library:
 - `AgentStatusCollector`: background collector launched by the app. Reads local
   Codex, Claude Code, and Copilot CLI artifacts, classifies sessions, filters stale entries,
   and writes the shared status snapshot.
+- `AgentCodexHook`: observation-only Codex lifecycle helper. Writes compact per-session metadata, never permission decisions.
 - `AgentClaudeHook`: helper invoked by Claude Code hooks. It receives lifecycle
   JSON on stdin and writes compact per-session hook state.
 - `AgentCopilotHook`: helper invoked by GitHub Copilot CLI hooks. It receives
   lifecycle JSON on stdin and writes compact per-session hook state.
 - `AgentTrafficLightsCore`: shared Codable models and status writer.
 
-The packaged app bundle must include all four executables:
+The packaged app bundle must include all five executables:
 
 ```text
 Agent Light.app/Contents/MacOS/AgentTrafficLights
 Agent Light.app/Contents/MacOS/AgentStatusCollector
 Agent Light.app/Contents/MacOS/AgentClaudeHook
 Agent Light.app/Contents/MacOS/AgentCopilotHook
+Agent Light.app/Contents/MacOS/AgentCodexHook
 ```
 
 `script/package_release.sh` is the source of truth for bundle layout.
@@ -115,6 +117,8 @@ failed / needsInput > working > idle > unknown
 `AgentSession.completedAt` is an edge-triggered completion marker. Do not treat
 it as a normal status. It exists so notifications can fire once per completed
 turn without relying on a status debounce.
+`AgentSession.usesCompletionMarker` marks event-backed sessions even before their
+first completion, so interruption and disappearance do not imply completion.
 
 ## Collector Rules
 
@@ -127,7 +131,8 @@ Sources/AgentStatusCollector/main.swift
 
 Sources:
 
-- `CodexRolloutSource`: reads rollout JSONL.
+- `CodexRolloutSource`: reads rollout JSONL; accepts known root sources and ChatGPT handoffs while rejecting Guardian/subagents.
+- `CodexHookSource`: reads optional Codex hook state before rollout merging.
 - `ClaudeCodeTranscriptSource`: reads Claude transcript JSONL.
 - `ClaudeCodeHookSource`: reads Agent Light hook state.
 - `CopilotHookSource`: reads Agent Light Copilot CLI hook state.
@@ -165,12 +170,23 @@ Notification hooks are matcher-based:
 - `permission_prompt`
 - `elicitation_dialog`
 
-`AgentClaudeHook` receives the notification matcher as argv because Claude's
-notification payload does not carry that type directly.
+`AgentClaudeHook` reads notification_type from current payloads; argv matcher is an older-version fallback. Child-scoped agent_id events cannot overwrite the main session; SubagentStart is a parent-side start signal.
 
-Hook changes apply to new Claude Code sessions. Existing Claude Code sessions
-should be restarted after installing or removing hooks. If the app bundle moves,
+Recent Claude Code versions reload hook settings. Older versions may require a restart. If the app bundle moves,
 install hooks again so Claude Code points at the current bundled helper path.
+
+## Codex Hooks
+
+Optional Codex hooks are installed through Settings > Agents > Codex (also in onboarding).
+Use Codex 0.169 or later; upgrade older CLIs sharing CODEX_HOME before installing.
+The installer preserves other entries in CODEX_HOME/hooks.json. Exact hook definitions
+must be reviewed and trusted in Codex Settings > Hooks or /hooks after installation/repair.
+Never auto-trust hooks. Configured status does not prove trust or runtime support.
+The helper outputs {} only; it never returns permission decisions or continuation fields.
+Its state is ~/.agent-traffic-lights/codex-hooks/*.json, with millisecond numeric dates.
+Stop advances completedAt once per turn; Interrupt/SessionEnd do not invent completion.
+The collector reads it ahead of rollouts with the same session id and standard hook grace.
+CODEX_HOME and CLAUDE_CONFIG_DIR must be inherited by Agent Light/collector as well as the CLI.
 
 ## Copilot CLI Hooks
 
@@ -329,6 +345,7 @@ Expected email:
 ```bash
 swift test
 python3 -m unittest discover -s Tests/ReleaseScriptsTests -v
+python3 -m unittest discover -s Tests/HookHelpersTests -v
 ```
 
 3. Build a local release zip if you want to inspect it before tagging:
@@ -336,7 +353,7 @@ python3 -m unittest discover -s Tests/ReleaseScriptsTests -v
 ```bash
 SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 APPLE_TEAM_ID="YOURTEAMID" NOTARY_PROFILE="agent-light-release" \
-./script/package_release.sh v0.1.6
+./script/package_release.sh v0.1.7
 ```
 
 4. Commit release changes.
@@ -344,9 +361,9 @@ APPLE_TEAM_ID="YOURTEAMID" NOTARY_PROFILE="agent-light-release" \
 5. Create and push a new tag:
 
 ```bash
-git tag v0.1.6
+git tag v0.1.7
 git push origin master
-git push origin v0.1.6
+git push origin v0.1.7
 ```
 
 Signing and notarization run locally using Keychain credentials; do not export
@@ -370,14 +387,14 @@ After the GitHub release asset exists, update:
 Set:
 
 ```ruby
-version "0.1.6"
+version "0.1.7"
 sha256 "<release zip sha256>"
 ```
 
 Calculate SHA256 from the release zip:
 
 ```bash
-shasum -a 256 Agent-Light-v0.1.6-macOS.zip
+shasum -a 256 Agent-Light-v0.1.7-macOS.zip
 ```
 
 Commit and push the tap:
@@ -385,7 +402,7 @@ Commit and push the tap:
 ```bash
 cd /Users/eddywang/Documents/homebrew-tap
 git add Casks/agent-light.rb
-git commit -m "agent-light 0.1.6"
+git commit -m "agent-light 0.1.7"
 git push origin main
 ```
 

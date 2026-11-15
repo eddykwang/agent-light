@@ -9,14 +9,16 @@ public struct AgentSession: Codable, Equatable, Identifiable {
     public let workspacePath: String?
     public let threadURL: URL?
     public let updatedAt: Date?
-    /// Set only by a discrete turn-completion event (the Claude Code `Stop` hook). It is a
+    /// Set only by a discrete turn-completion event. It is a
     /// monotonic, edge-triggered marker — independent of the wobble-prone `status` field — so
     /// notifiers can fire "task finished" exactly once per turn without debouncing.
     public let completedAt: Date?
+    /// Event-backed sessions must not infer completion from interruption or disappearance.
+    public let usesCompletionMarker: Bool?
 
     public init(id: String, provider: String, projectName: String, status: AgentStatus,
                 detail: String?, workspacePath: String?, threadURL: URL?, updatedAt: Date?,
-                completedAt: Date? = nil) {
+                completedAt: Date? = nil, usesCompletionMarker: Bool? = nil) {
         self.id = id
         self.provider = provider
         self.projectName = projectName
@@ -26,6 +28,7 @@ public struct AgentSession: Codable, Equatable, Identifiable {
         self.threadURL = threadURL
         self.updatedAt = updatedAt
         self.completedAt = completedAt
+        self.usesCompletionMarker = usesCompletionMarker
     }
 
     public enum CodingKeys: String, CodingKey {
@@ -33,6 +36,7 @@ public struct AgentSession: Codable, Equatable, Identifiable {
         case threadURL = "threadUrl"
         case updatedAt
         case completedAt
+        case usesCompletionMarker
     }
 
     /// Returns a copy with `completedAt` replaced — used when merging duplicate sessions so the
@@ -40,6 +44,6 @@ public struct AgentSession: Codable, Equatable, Identifiable {
     public func withCompletedAt(_ value: Date?) -> AgentSession {
         AgentSession(id: id, provider: provider, projectName: projectName, status: status,
                      detail: detail, workspacePath: workspacePath, threadURL: threadURL,
-                     updatedAt: updatedAt, completedAt: value)
+                     updatedAt: updatedAt, completedAt: value, usesCompletionMarker: usesCompletionMarker)
     }
 }

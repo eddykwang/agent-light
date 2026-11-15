@@ -205,6 +205,28 @@ final class CollectorRunnerTests: XCTestCase {
         XCTAssertEqual(decoded.sessions.count, 1)
         XCTAssertEqual(decoded.sessions.first?.status, .working)
     }
+    func testCodexHooksWinWithinGraceAndNewerRolloutsRecoverStaleHooks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for delta in [1.0, 120.0] {
+            let marker = Date(timeIntervalSince1970: 5)
+            let hook = RawSession(id: "same-codex", provider: "codex", projectName: "p", workspacePath: "/tmp",
+                threadURL: nil, fileURL: root, status: .needsInput, detail: "hook", updatedAt: Date(timeIntervalSince1970: 10),
+                isEventSignal: true, completedAt: marker)
+            let rollout = RawSession(id: "same-codex", provider: "codex", projectName: "p", workspacePath: "/tmp",
+                threadURL: nil, fileURL: root, status: .working, detail: "rollout", updatedAt: Date(timeIntervalSince1970: 10 + delta))
+            let path = root.appendingPathComponent("status.json")
+            let runner = CollectorRunner(sources: [StubSource(sessions: [hook, rollout])], liveness: AllAliveLiveness(), writer: StatusFileWriter(), statusPath: path.path)
+            try runner.runOnce()
+            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+            let snapshot = try decoder.decode(StatusSnapshot.self, from: Data(contentsOf: path))
+            XCTAssertEqual(snapshot.sessions.count, 1)
+            XCTAssertEqual(snapshot.sessions.first?.status, delta < 60 ? .needsInput : .working)
+            XCTAssertEqual(snapshot.sessions.first?.completedAt, marker)
+        }
+    }
+
 }
 
 private struct StubSource: SessionSource {

@@ -1,8 +1,9 @@
 import Foundation
+import AgentTrafficLightsCore
 
 enum ClaudeHookInstaller {
-    static let defaultSettingsURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/settings.json")
+    static let defaultSettingsURL = AgentConfigurationPaths.claudeHome()
+        .appendingPathComponent("settings.json")
 
     /// Events whose type is carried in the JSON payload (`hook_event_name`).
     /// `needsInput` comes from the dedicated `PermissionRequest`/`Elicitation` events.
@@ -27,13 +28,7 @@ enum ClaudeHookInstaller {
         "SessionEnd"
     ]
 
-    private static let deprecatedHookEvents = [
-        "SubagentStop",
-        "TaskCompleted",
-        "TeammateIdle"
-    ]
-
-    /// Notification types route via the hook `matcher` (the payload has no notification type).
+    /// Match notifications and retain argv fallback for older Claude versions.
     /// We pass the notification type to the binary as an arg so it never has to guess from the
     /// payload. Completion notifications use `idle_prompt`; permission/input alerts use the
     /// attention-related matchers.
@@ -49,7 +44,7 @@ enum ClaudeHookInstaller {
         let quotedPath = shellQuoted(hookBinaryURL.path)
         let entry = hookEntry(matcher: "", command: quotedPath)
 
-        for event in deprecatedHookEvents {
+        for event in Array(hooks.keys) {
             guard let entries = hooks[event] as? [[String: Any]] else { continue }
             let cleaned = entries.compactMap(removingAgentLightHooks)
             if cleaned.isEmpty {
@@ -106,15 +101,36 @@ enum ClaudeHookInstaller {
         try writeSettings(settings, to: settingsURL)
     }
 
-    static func isInstalled(settingsURL: URL = defaultSettingsURL) -> Bool {
+    static func containsHooks(settingsURL: URL = defaultSettingsURL) -> Bool {
         guard let settings = try? readSettings(settingsURL),
-              let hooks = settings["hooks"] as? [String: Any] else {
-            return false
-        }
-
+              let hooks = settings["hooks"] as? [String: Any] else { return false }
         return hooks.values.contains { value in
-            guard let entries = value as? [[String: Any]] else { return false }
-            return entries.contains(where: containsAgentLightHook)
+            (value as? [[String: Any]])?.contains(where: containsAgentLightHook) == true
+        }
+    }
+
+    static func isInstalled(hookBinaryURL: URL, settingsURL: URL = defaultSettingsURL) -> Bool {
+        guard let settings = try? readSettings(settingsURL),
+              let hooks = settings["hooks"] as? [String: Any] else { return false }
+        let command = shellQuoted(hookBinaryURL.path)
+        for event in hookEvents {
+            guard let entries = hooks[event] as? [[String: Any]],
+                  entries.contains(where: { entry in
+                      ["", "*"].contains(entry["matcher"] as? String ?? "") &&
+                      (entry["hooks"] as? [[String: Any]])?.contains(where: {
+                          ($0["type"] as? String) == "command" && ($0["command"] as? String) == command
+                      }) == true
+                  }) else { return false }
+        }
+        let notifications = hooks["Notification"] as? [[String: Any]] ?? []
+        return notificationMatchers.allSatisfy { matcher in
+            notifications.contains { entry in
+                (entry["matcher"] as? String) == matcher &&
+                (entry["hooks"] as? [[String: Any]])?.contains(where: {
+                    ($0["type"] as? String) == "command" &&
+                    ($0["command"] as? String) == "\(command) \(matcher)"
+                }) == true
+            }
         }
     }
 
@@ -152,14 +168,18 @@ enum ClaudeHookInstaller {
 
     private static func isAgentLightHookCommand(_ commandEntry: [String: Any]) -> Bool {
         guard let command = commandEntry["command"] as? String else { return false }
-        return command.contains("AgentClaudeHook")
+        return command.range(of: #"/AgentClaudeHook(?:[\'\"]?(?:\s|$))"#, options: .regularExpression) != nil
     }
 
     private static func readSettings(_ url: URL) throws -> [String: Any] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
         let data = try Data(contentsOf: url)
         guard !data.isEmpty else { return [:] }
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        guard let settings = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              settings["hooks"] == nil || settings["hooks"] is [String: [[String: Any]]] else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return settings
     }
 
     private static func writeSettings(_ settings: [String: Any], to url: URL) throws {

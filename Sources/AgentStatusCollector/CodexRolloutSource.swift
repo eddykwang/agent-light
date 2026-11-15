@@ -10,11 +10,12 @@ public struct CodexRolloutSource: SessionSource {
 
     public init(
         sessionsRoot: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
         now: @escaping () -> Date = Date.init,
         candidateStaleAfter: TimeInterval = 60 * 60
     ) {
         self.sessionsRoot = sessionsRoot
-            ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.codex/sessions"
+            ?? AgentConfigurationPaths.codexHome(environment: environment).appendingPathComponent("sessions").path
         self.now = now
         self.candidateStaleAfter = candidateStaleAfter
     }
@@ -81,15 +82,16 @@ public struct CodexRolloutSource: SessionSource {
     }
 
     private static func isUserThread(_ payload: [String: Any]) -> Bool {
-        let threadSource = payload["thread_source"] as? String ?? ""
-        guard threadSource == "user" else { return false }
-
         if let source = payload["source"] as? [String: Any],
            source["subagent"] != nil || source["guardian"] != nil {
             return false
         }
 
-        return true
+        if let threadSource = payload["thread_source"] as? String {
+            return threadSource == "user" || threadSource == "chatgpt_handoff"
+        }
+        // Older CLI rollouts predate thread_source; only accept known root sources.
+        return ["cli", "vscode", "exec", "appServer", "app_server"].contains(payload["source"] as? String ?? "")
     }
 
     private static func isCodexLifecycleEvent(_ object: [String: Any]) -> Bool {

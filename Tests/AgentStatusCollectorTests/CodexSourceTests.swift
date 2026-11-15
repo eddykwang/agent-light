@@ -209,4 +209,35 @@ final class CodexSourceTests: XCTestCase {
         let sessions = try source.currentSessions()
         XCTAssertEqual(sessions.first?.projectName, "myproject")
     }
+    func testCodexHomeEnvironmentResolvesSessionsRoot() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sessions = root.appendingPathComponent("sessions")
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lines = [#"{"type":"session_meta","payload":{"id":"custom-home","source":"cli","cwd":"/tmp"}}"#,
+                     #"{"type":"event_msg","payload":{"type":"task_started"}}"#].joined(separator: "\n")
+        try lines.write(to: sessions.appendingPathComponent("rollout.jsonl"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(try CodexRolloutSource(environment: ["CODEX_HOME": root.path]).currentSessions().map(\.id), ["custom-home"])
+    }
+
+    func testHandoffAndLegacyRootsAreIncludedWithoutAdmittingGuardians() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let metadata: [[String: Any]] = [
+            ["id": "handoff", "thread_source": "chatgpt_handoff", "source": "vscode"],
+            ["id": "legacy", "source": "cli"],
+            ["id": "guardian", "thread_source": "guardian_review", "source": "vscode"],
+            ["id": "child", "thread_source": "chatgpt_handoff", "source": ["subagent": "reviewer"]],
+            ["id": "unknown", "source": "unknown"]
+        ]
+        for payload in metadata {
+            let first = try JSONSerialization.data(withJSONObject: ["type": "session_meta", "payload": payload])
+            var data = first; data.append(Data("\n".utf8))
+            data.append(try JSONSerialization.data(withJSONObject: ["type": "event_msg", "payload": ["type": "task_started"]]))
+            try data.write(to: root.appendingPathComponent("\(payload["id"]!).jsonl"))
+        }
+        XCTAssertEqual(Set(try CodexRolloutSource(sessionsRoot: root.path).currentSessions().map(\.id)), ["handoff", "legacy"])
+    }
+
 }

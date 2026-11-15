@@ -50,7 +50,8 @@ public struct RawSession: Equatable {
     public func toAgentSession() -> AgentSession {
         AgentSession(id: id, provider: provider, projectName: projectName, status: status,
                      detail: detail, workspacePath: workspacePath, threadURL: threadURL,
-                     updatedAt: updatedAt, completedAt: completedAt)
+                     updatedAt: updatedAt, completedAt: completedAt,
+                     usesCompletionMarker: isEventSignal ? true : nil)
     }
 
 }

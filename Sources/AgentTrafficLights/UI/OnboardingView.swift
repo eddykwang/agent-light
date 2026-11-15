@@ -27,7 +27,7 @@ struct OnboardingView: View {
         self.onFinish = onFinish
         _selectedOrientation = State(initialValue: settings.orientation)
         _selectedClaudeMode = State(initialValue: settings.claudeCodeStatusMode)
-        _hooksInstalled = State(initialValue: ClaudeHookInstaller.isInstalled())
+        _hooksInstalled = State(initialValue: ClaudeHookInstaller.isInstalled(hookBinaryURL: claudeHookBinaryURL))
         _copilotHooksInstalled = State(initialValue: CopilotHookInstaller.status(hookBinaryURL: copilotHookBinaryURL) == .installed)
     }
 
@@ -179,7 +179,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Connect your coding agents")
                     .font(.system(size: 20, weight: .semibold))
-                Text("Claude Code works from transcripts by default. Copilot CLI requires an optional local hook installation.")
+                Text("Codex and Claude Code work without hooks. Add optional lifecycle hooks for more precise status. Copilot CLI requires hooks.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -191,9 +191,11 @@ struct OnboardingView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 300)
+            .frame(width: 360)
 
             switch selectedAgent {
+            case .codex:
+                CodexHooksView()
             case .claudeCode:
                 claudeCodeSetup
             case .copilotCLI:
@@ -361,7 +363,7 @@ struct OnboardingView: View {
     }
 
     private func chooseHooks() {
-        let installed = ClaudeHookInstaller.isInstalled()
+        let installed = ClaudeHookInstaller.isInstalled(hookBinaryURL: claudeHookBinaryURL)
         hooksInstalled = installed
 
         if installed {
@@ -388,7 +390,7 @@ struct OnboardingView: View {
 
     private func applyClaudeChoice(_ outcome: ClaudeCodeHookChoiceOutcome) {
         let resolution = ClaudeCodeHookChoiceResolution.resolve(outcome)
-        hooksInstalled = resolution.hooksInstalled || ClaudeHookInstaller.isInstalled()
+        hooksInstalled = resolution.hooksInstalled || ClaudeHookInstaller.isInstalled(hookBinaryURL: claudeHookBinaryURL)
         selectedClaudeMode = resolution.mode
         settings.claudeCodeStatusMode = resolution.mode
         message = resolution.message
@@ -402,7 +404,7 @@ struct OnboardingView: View {
     }
 
     private func reconcileHooksMode() {
-        hooksInstalled = ClaudeHookInstaller.isInstalled()
+        hooksInstalled = ClaudeHookInstaller.isInstalled(hookBinaryURL: claudeHookBinaryURL)
 
         guard selectedClaudeMode == .hooks, !hooksInstalled else {
             return

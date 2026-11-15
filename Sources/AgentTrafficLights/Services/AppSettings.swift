@@ -1,6 +1,7 @@
 import Foundation
 
 enum AgentIntegration: String, CaseIterable, Identifiable {
+    case codex
     case claudeCode
     case copilotCLI
 
@@ -8,6 +9,7 @@ enum AgentIntegration: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .codex: return "Codex"
         case .claudeCode: return "Claude Code"
         case .copilotCLI: return "Copilot CLI"
         }

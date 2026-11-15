@@ -227,6 +227,14 @@ final class LivenessTests: XCTestCase {
         XCTAssertEqual(filter.aliveSessions(from: [stale, recent]).map(\.id), ["recent"])
     }
 
+    func testCodexHookSignalDoesNotRequireOpenTranscriptFile() {
+        let session = makeSession(id: "codex-hook", provider: "codex", workspacePath: "/p",
+            fileURL: URL(fileURLWithPath: "/tmp/hook.json"), status: .needsInput,
+            updatedAt: Date(timeIntervalSince1970: 1), isEventSignal: true)
+        let filter = LsofLivenessFilter(checker: StubChecker(openPaths: []), now: { Date(timeIntervalSince1970: 1000) })
+        XCTAssertEqual(filter.aliveSessions(from: [session]).map(\.id), ["codex-hook"])
+    }
+
     // MARK: - Helpers
 
     private func makeSession(provider: String, fileURL: URL, status: AgentStatus, updatedAt: Date) -> RawSession {

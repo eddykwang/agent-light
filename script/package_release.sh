@@ -42,6 +42,7 @@ BUILD_DIR="$(swift build -c release --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$EXECUTABLE_NAME"
 COLLECTOR_BINARY="$BUILD_DIR/AgentStatusCollector"
 CLAUDE_HOOK_BINARY="$BUILD_DIR/AgentClaudeHook"
+CODEX_HOOK_BINARY="$BUILD_DIR/AgentCodexHook"
 COPILOT_HOOK_BINARY="$BUILD_DIR/AgentCopilotHook"
 
 rm -rf "$RELEASE_DIR"
@@ -56,6 +57,8 @@ cp "$CLAUDE_HOOK_BINARY" "$APP_MACOS/AgentClaudeHook"
 chmod +x "$APP_MACOS/AgentClaudeHook"
 cp "$COPILOT_HOOK_BINARY" "$APP_MACOS/AgentCopilotHook"
 chmod +x "$APP_MACOS/AgentCopilotHook"
+cp "$CODEX_HOOK_BINARY" "$APP_MACOS/AgentCodexHook"
+chmod +x "$APP_MACOS/AgentCodexHook"
 cp "$APP_ICON" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$ROOT_DIR/Resources/ProviderIcons" "$APP_RESOURCES/ProviderIcons"
 cp -R "$DESKTOP_LIGHT_ASSETS" "$APP_RESOURCES/DesktopLightAssets"
@@ -92,7 +95,7 @@ cat >"$INFO_PLIST" <<PLIST
 PLIST
 
 python3 "$ROOT_DIR/script/check_release_contents.py" "$APP_BUNDLE"
-for helper in AgentStatusCollector AgentClaudeHook AgentCopilotHook; do
+for helper in AgentStatusCollector AgentClaudeHook AgentCopilotHook AgentCodexHook; do
   codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_MACOS/$helper"
 done
 codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"

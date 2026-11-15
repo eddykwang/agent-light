@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "AgentTrafficLights", targets: ["AgentTrafficLights"]),
         .executable(name: "AgentStatusCollector", targets: ["AgentStatusCollector"]),
+        .executable(name: "AgentCodexHook", targets: ["AgentCodexHook"]),
         .executable(name: "AgentClaudeHook", targets: ["AgentClaudeHook"]),
         .executable(name: "AgentCopilotHook", targets: ["AgentCopilotHook"]),
         .library(name: "AgentTrafficLightsCore", targets: ["AgentTrafficLightsCore"])
@@ -22,6 +23,11 @@ let package = Package(
             name: "AgentStatusCollector",
             dependencies: ["AgentTrafficLightsCore"],
             path: "Sources/AgentStatusCollector"
+        ),
+        .executableTarget(
+            name: "AgentCodexHook",
+            dependencies: ["AgentTrafficLightsCore"],
+            path: "Sources/AgentCodexHook"
         ),
         .executableTarget(
             name: "AgentClaudeHook",

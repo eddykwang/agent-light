@@ -5,7 +5,6 @@ import Foundation
 @MainActor
 final class SessionAlertNotifier {
     private var lastAttentionFingerprint: String?
-    private var lastAggregateStatus: AgentStatus?
     private var lastSessionsByID: [String: AgentSession] = [:]
     private let foregroundPresenter = NotificationForegroundPresenter()
     private let post: (String, String) -> Void
@@ -49,7 +48,6 @@ final class SessionAlertNotifier {
         }
 
         updateAttentionStatus(status, sessions: sessions, notifyOnAttention: notifyOnAttention)
-        lastAggregateStatus = status
         lastSessionsByID = sessionsByID(sessions)
     }
 
@@ -68,7 +66,7 @@ final class SessionAlertNotifier {
         }
 
         for previousSession in lastSessionsByID.values {
-            guard !usesCompletionMarker(provider: previousSession.provider),
+            guard !usesCompletionMarker(for: previousSession),
                   previousSession.status == .working,
                   currentSessionsByID[previousSession.id] == nil else {
                 continue
@@ -82,7 +80,7 @@ final class SessionAlertNotifier {
             return false
         }
 
-        if usesCompletionMarker(provider: session.provider) {
+        if usesCompletionMarker(for: session) {
             // Edge-trigger on the provider's discrete completion marker: fire exactly once when a
             // strictly newer `completedAt` appears. This is immune to working/idle flapping and
             // fires the moment the turn ends instead of waiting for a later idle observation.
@@ -95,7 +93,7 @@ final class SessionAlertNotifier {
     }
 
     private func shouldPostAllCompletion(aggregateStatus status: AgentStatus, sessions: [AgentSession]) -> Bool {
-        guard lastAggregateStatus == .working, status == .idle else {
+        guard status == .idle else {
             return false
         }
 
@@ -105,7 +103,7 @@ final class SessionAlertNotifier {
         }
 
         return lastSessionsByID.values.contains { previousSession in
-            !usesCompletionMarker(provider: previousSession.provider)
+            !usesCompletionMarker(for: previousSession)
                 && previousSession.status == .working
                 && currentSessionsByID[previousSession.id] == nil
         }
@@ -210,8 +208,9 @@ final class SessionAlertNotifier {
         }
     }
 
-    private func usesCompletionMarker(provider: String) -> Bool {
-        provider == "claude-code" || provider == "copilot-cli"
+    private func usesCompletionMarker(for session: AgentSession) -> Bool {
+        session.usesCompletionMarker == true || session.provider == "claude-code" || session.provider == "copilot-cli" ||
+            (session.provider == "codex" && session.completedAt != nil)
     }
 
     private func cleanedDetail(_ detail: String?, fallback: String) -> String {

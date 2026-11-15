@@ -33,7 +33,7 @@ final class ClaudeHookInstallerTests: XCTestCase {
         let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
         let stopEntries = try XCTUnwrap(hooks["Stop"] as? [[String: Any]])
         XCTAssertEqual(stopEntries.count, 2)
-        XCTAssertTrue(ClaudeHookInstaller.isInstalled(settingsURL: settingsURL))
+        XCTAssertTrue(ClaudeHookInstaller.isInstalled(hookBinaryURL: URL(fileURLWithPath: "/Applications/Agent Light.app/Contents/MacOS/AgentClaudeHook"), settingsURL: settingsURL))
         XCTAssertNotNil(hooks["SessionStart"])
         XCTAssertNotNil(hooks["PermissionRequest"])
         XCTAssertNotNil(hooks["PermissionDenied"])
@@ -55,7 +55,7 @@ final class ClaudeHookInstallerTests: XCTestCase {
         try ClaudeHookInstaller.remove(settingsURL: settingsURL)
 
         let object = try readJSONObject(settingsURL)
-        XCTAssertFalse(ClaudeHookInstaller.isInstalled(settingsURL: settingsURL))
+        XCTAssertFalse(ClaudeHookInstaller.isInstalled(hookBinaryURL: URL(fileURLWithPath: "/Applications/Agent Light.app/Contents/MacOS/AgentClaudeHook"), settingsURL: settingsURL))
         XCTAssertNil(object["hooks"])
     }
 
@@ -101,6 +101,34 @@ final class ClaudeHookInstallerTests: XCTestCase {
         let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
         let notification = try XCTUnwrap(hooks["Notification"] as? [[String: Any]])
         XCTAssertEqual(notification.count, 3, "re-installing must not duplicate Notification entries")
+    }
+
+    func testRepairUpdatesOldPathAndDetectsMissingEvents() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("settings.json")
+        let old = URL(fileURLWithPath: "/tmp/old/AgentClaudeHook")
+        let current = URL(fileURLWithPath: "/Applications/Agent Light.app/Contents/MacOS/AgentClaudeHook")
+        try ClaudeHookInstaller.install(hookBinaryURL: old, settingsURL: file)
+        XCTAssertTrue(ClaudeHookInstaller.containsHooks(settingsURL: file))
+        XCTAssertFalse(ClaudeHookInstaller.isInstalled(hookBinaryURL: current, settingsURL: file))
+        try ClaudeHookInstaller.install(hookBinaryURL: current, settingsURL: file)
+        XCTAssertTrue(ClaudeHookInstaller.isInstalled(hookBinaryURL: current, settingsURL: file))
+        XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("/tmp/old"))
+        var object = try readJSONObject(file)
+        var hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
+        hooks.removeValue(forKey: "Stop"); object["hooks"] = hooks
+        try JSONSerialization.data(withJSONObject: object).write(to: file)
+        XCTAssertFalse(ClaudeHookInstaller.isInstalled(hookBinaryURL: current, settingsURL: file))
+    }
+
+    func testMalformedHookMapIsNotOverwritten() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let text = #"{"hooks":[],"other":"preserve"}"#
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try ClaudeHookInstaller.install(hookBinaryURL: URL(fileURLWithPath: "/tmp/AgentClaudeHook"), settingsURL: file))
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), text)
     }
 
     private func readJSONObject(_ url: URL) throws -> [String: Any] {

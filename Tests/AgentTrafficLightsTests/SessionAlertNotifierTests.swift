@@ -318,6 +318,36 @@ final class SessionAlertNotifierTests: XCTestCase {
         XCTAssertEqual(posted, ["Copilot CLI needs input: Demo"])
     }
 
+    func testCodexHookCompletionUsesMarkerOnceEvenAfterNeedsInput() {
+        var posted: [String] = []
+        let notifier = SessionAlertNotifier(post: { title, _ in posted.append(title) })
+        let marker = Date(timeIntervalSince1970: 100)
+        notifier.update(aggregate: .needsInput, sessions: [session(id: "codex-hook", status: .needsInput)], notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: true)
+        let done = session(id: "codex-hook", status: .idle, completedAt: marker)
+        notifier.update(aggregate: .idle, sessions: [done], notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: true)
+        notifier.update(aggregate: .working, sessions: [session(id: "codex-hook", status: .working, completedAt: marker)], notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: false)
+        notifier.update(aggregate: .idle, sessions: [done], notifyOnAttention: false, notifyOnSessionCompletion: true, notifyOnAllCompletion: false)
+        XCTAssertEqual(posted, ["Codex finished: Project", "All agents are idle"])
+    }
+
+    func testCodexHookInterruptionAndDisappearanceDoNotNotifyCompletion() {
+        var posted: [String] = []
+        let notifier = SessionAlertNotifier(post: { title, _ in posted.append(title) })
+        func push(_ status: AgentStatus, present: Bool = true, completedAt: Date? = nil) {
+            let hookSession = session(id: "hook", status: status, completedAt: completedAt, usesCompletionMarker: true)
+            notifier.update(aggregate: status, sessions: present ? [hookSession] : [], notifyOnAttention: false,
+                            notifyOnSessionCompletion: true, notifyOnAllCompletion: true)
+        }
+        push(.working)
+        push(.idle)
+        push(.working)
+        push(.idle, present: false)
+        XCTAssertTrue(posted.isEmpty)
+        push(.working)
+        push(.idle, completedAt: Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(posted.count, 2)
+    }
+
     private func session(
         id: String,
         provider: String = "codex",
@@ -325,7 +355,8 @@ final class SessionAlertNotifierTests: XCTestCase {
         status: AgentStatus,
         detail: String? = nil,
         workspacePath: String? = nil,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        usesCompletionMarker: Bool? = nil
     ) -> AgentSession {
         AgentSession(
             id: id,
@@ -336,7 +367,8 @@ final class SessionAlertNotifierTests: XCTestCase {
             workspacePath: workspacePath,
             threadURL: nil,
             updatedAt: nil,
-            completedAt: completedAt
+            completedAt: completedAt,
+            usesCompletionMarker: usesCompletionMarker
         )
     }
 }

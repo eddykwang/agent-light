@@ -89,7 +89,7 @@ panel.
 
 ### Local agent integrations
 
-Agent Light can use local lifecycle hooks for more precise Claude Code and
+Agent Light can use local lifecycle hooks for more precise Codex, Claude Code and
 GitHub Copilot CLI status without storing prompts, tool inputs, tool output, or
 model responses.
 
@@ -101,7 +101,8 @@ model responses.
 
 - Native macOS menu bar indicator with vertical or horizontal traffic-light
   layouts.
-- Automatic Codex detection through local rollout files.
+- Automatic Codex detection through local rollout files, including ChatGPT handoffs and older CLI root sessions.
+- Optional Codex lifecycle hooks for permission/input attention, completion and interruption signals.
 - Automatic Claude Code detection through local transcript files.
 - Optional Claude Code hooks mode for more precise permission, input, and
   completion status.
@@ -178,6 +179,21 @@ an accurate liveness signal. Claude Code closes transcript files between writes,
 so the collector combines recent transcript updates with read-only local process
 checks scoped to the same workspace.
 
+Optional **Settings... > Agents > Codex** hooks call the bundled `AgentCodexHook`
+helper and write status metadata under `~/.agent-traffic-lights/codex-hooks/`.
+The installer merges only Agent Light entries into `~/.codex/hooks.json`, preserving
+other hooks. After installation or repair, review and trust the hooks in **Codex
+Settings > Hooks**, or `/hooks` in Codex CLI. Configured does not mean trusted;
+untrusted hooks are skipped. Use Codex 0.169 or later, and upgrade older CLI
+versions sharing this Codex home before installing the hook configuration.
+Hooks never approve, deny, block or continue agent work; they return empty JSON.
+Model-request retries are not reported as terminal failures.
+
+`CODEX_HOME` changes the Codex sessions/hooks root. `CLAUDE_CONFIG_DIR` changes the
+Claude transcript/settings root. Agent Light and its collector must inherit these
+variables too: a menu-bar app launched from Finder does not automatically inherit
+your terminal's environment. Defaults remain `~/.codex` and `~/.claude`.
+
 Claude Code can also be switched to optional hooks mode during onboarding or
 from **Settings... > Agents > Claude Code**. In that mode Agent Light adds local Claude
 Code command hooks that call the bundled `AgentClaudeHook` helper. The helper
@@ -189,8 +205,7 @@ receives Claude Code lifecycle events and writes compact status metadata under:
 
 Hooks improve `needsInput` and completion detection for Claude Code. They do not
 send prompts, tool inputs, model responses, or transcript content to Agent Light.
-New hook settings apply to new Claude Code sessions; restart existing Claude
-Code sessions after installing or removing hooks.
+Current Claude Code versions reload hook settings during a session. Older versions may require a restart; start a new session if changes are not picked up.
 
 For GitHub Copilot CLI, Agent Light can install an isolated user hook file at:
 
@@ -212,7 +227,7 @@ Everything runs locally on your Mac.
 - The app does not modify agent transcripts or rollout files.
 - The app does not add anything to an agent's context window.
 - Default support does not require installing Codex or Claude Code hooks.
-- Optional Claude Code and Copilot CLI hooks store status metadata only, locally
+- Optional Codex, Claude Code and Copilot CLI hooks store status metadata only, locally
   on your Mac.
 
 The collector reads local agent metadata and writes a compact local status JSON
@@ -235,7 +250,7 @@ Releases up to v0.1.5 were ad-hoc signed and not notarized.
 
 The release pipeline now requires a **Developer ID Application** certificate
 with its private key and a validated `notarytool` Keychain profile. It signs all
-four executables with Hardened Runtime and a secure timestamp, notarizes the app,
+five executables with Hardened Runtime and a secure timestamp, notarizes the app,
 staples the ticket, then repackages and verifies the final ZIP. Any failure stops
 publication; there is no unsigned fallback.
 
@@ -246,10 +261,10 @@ After preparing the certificate and Keychain profile, create a local release ZIP
 export SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)'
 export APPLE_TEAM_ID='YOURTEAMID'
 export NOTARY_PROFILE='agent-light-release'
-./script/package_release.sh v0.1.6
+./script/package_release.sh v0.1.7
 ```
 
-The output is `dist/Agent-Light-v0.1.6-macOS.zip`. Never put certificate private
+The output is `dist/Agent-Light-v0.1.7-macOS.zip`. Never put certificate private
 keys, `.p12` / `.p8` files, passwords or API tokens in the repository or release
 assets. Public certificate chains embedded in code signatures are expected.
 
@@ -262,15 +277,16 @@ signatures, Team ID, notarization ticket and Gatekeeper acceptance.
 After committing and pushing the release changes, prepare a new tag and draft:
 
 ```bash
-git tag v0.1.6
-git push origin v0.1.6
-gh release create v0.1.6 dist/Agent-Light-v0.1.6-macOS.zip --draft --verify-tag --title v0.1.6 --generate-notes
-gh workflow run release.yml -f version=v0.1.6
+git tag v0.1.7
+git push origin v0.1.7
+gh release create v0.1.7 dist/Agent-Light-v0.1.7-macOS.zip --draft --verify-tag --title v0.1.7 --generate-notes
+gh workflow run release.yml -f version=v0.1.7
 ```
 
 Wait for the workflow and local installation checks to pass before publishing
 the draft. Then update the Homebrew cask URL, version and SHA256 from the actual
-published ZIP. See the [signing and release checklist](docs/signing-release-plan.md).
+published ZIP. See the [signing and release checklist](docs/signing-release-plan.md)
+and [v0.1.7 compatibility checks](docs/v0.1.7-compatibility-checks.md).
 
 ## Run Locally
 
@@ -295,6 +311,8 @@ Run the test suite:
 
 ```bash
 swift test
+python3 -m unittest discover -s Tests/ReleaseScriptsTests -v
+python3 -m unittest discover -s Tests/HookHelpersTests -v
 ```
 
 Build without launching:
@@ -315,6 +333,7 @@ Open **Settings...** from the menu bar popover to change:
 
 - traffic-light orientation
 - Desktop Light visibility
+- Optional Codex hook setup and trust guidance
 - Claude Code default or hooks-based status detection
 - Copilot CLI hook installation and status
 - shared status file path
@@ -323,8 +342,8 @@ Open **Settings...** from the menu bar popover to change:
 - all-agents-idle completion notifications
 - launch at login
 
-The menu bar popover includes an **Agent integrations** shortcut to the Claude
-Code and Copilot CLI settings.
+The menu bar popover includes an **Agent integrations** shortcut to the Codex,
+Claude Code and Copilot CLI settings.
 
 The default status file path is:
 
@@ -334,14 +353,13 @@ The default status file path is:
 
 ## Limitations
 
-- Codex approval prompts are not reliably represented in rollout JSONL, so they
+- In rollout-only mode, Codex approval prompts are not reliably represented in JSONL, so they
   cannot always be inferred as `needsInput` from rollout files alone.
 - Claude Code transcript-only mode is best-effort for permission prompts. Use
   the recommended Claude Code hooks mode from onboarding or
   **Settings... > Agents > Claude Code** for more precise `needsInput` and completion
   status.
-- New Claude Code hook settings apply to new Claude Code sessions. Start a new
-  Claude Code session after installing, removing, or changing hooks.
+- Recent Claude Code versions reload hooks; older versions may require a new session.
 - If you move the app bundle after installing Claude Code hooks, install hooks
   again so Claude Code points at the new app path.
 - Copilot CLI status requires the Agent Light user hook. Install it from

@@ -6,9 +6,9 @@ public struct ClaudeCodeTranscriptSource: SessionSource {
     private let reader = TranscriptReader()
     private let cache = SourceCache()
 
-    public init(projectsRoot: String? = nil) {
+    public init(projectsRoot: String? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.projectsRoot = projectsRoot
-            ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.claude/projects"
+            ?? AgentConfigurationPaths.claudeHome(environment: environment).appendingPathComponent("projects").path
     }
 
     public func currentSessions() throws -> [RawSession] {

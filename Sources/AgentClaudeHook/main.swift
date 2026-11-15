@@ -11,8 +11,7 @@ let root = ProcessInfo.processInfo.environment["AGENT_LIGHT_CLAUDE_HOOKS_DIR"]
     ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/.agent-traffic-lights/claude-hooks"
 let rootURL = URL(fileURLWithPath: root, isDirectory: true)
 
-// Notification type is delivered via the hook matcher, NOT the JSON payload, so the
-// installer passes it as the first CLI argument (e.g. "permission_prompt").
+// Retain the matcher argument for older Claude versions without notification_type.
 let notificationType = CommandLine.arguments.dropFirst().first
 
 guard let state = ClaudeHookEventMapper.state(from: json, notificationType: notificationType) else {

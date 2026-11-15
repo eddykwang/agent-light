@@ -193,4 +193,19 @@ final class ClaudeHookEventMapperTests: XCTestCase {
         XCTAssertEqual(state?.status, .failed)
         XCTAssertEqual(state?.detail, "Claude Code stop failed")
     }
+    func testChildEventsDoNotOverwriteMainSessionButRootAgentTypeIsAllowed() {
+        for name in ["PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "StopFailure", "SessionEnd", "TaskCreated"] {
+            let input: [String: Any] = ["session_id": "main", "cwd": "/tmp", "hook_event_name": name, "agent_id": "child", "agent_type": "Explore"]
+            XCTAssertNil(ClaudeHookEventMapper.state(from: input), name)
+        }
+        XCTAssertEqual(ClaudeHookEventMapper.state(from: ["session_id": "main", "cwd": "/tmp", "hook_event_name": "SubagentStart", "agent_id": "child"])?.status, .working)
+        XCTAssertEqual(ClaudeHookEventMapper.state(from: ["session_id": "main", "cwd": "/tmp", "hook_event_name": "UserPromptSubmit", "agent_type": "custom-main"])?.status, .working)
+    }
+
+    func testPayloadNotificationTypeTakesPrecedenceAndUnknownEventsDoNothing() {
+        let input: [String: Any] = ["session_id": "main", "cwd": "/tmp", "hook_event_name": "Notification", "notification_type": "permission_prompt"]
+        XCTAssertEqual(ClaudeHookEventMapper.state(from: input, notificationType: "idle_prompt")?.status, .needsInput)
+        XCTAssertNil(ClaudeHookEventMapper.state(from: ["session_id": "main", "cwd": "/tmp", "hook_event_name": "FutureEvent"]))
+    }
+
 }

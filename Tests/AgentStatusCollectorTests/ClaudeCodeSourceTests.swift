@@ -3,6 +3,15 @@ import AgentTrafficLightsCore
 @testable import AgentStatusCollector
 
 final class ClaudeCodeSourceTests: XCTestCase {
+    func testClaudeConfigEnvironmentResolvesProjectsRoot() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent("projects/demo")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try #"{"type":"last-prompt","sessionId":"custom-home","cwd":"/tmp/demo"}"#.write(to: project.appendingPathComponent("s.jsonl"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(try ClaudeCodeTranscriptSource(environment: ["CLAUDE_CONFIG_DIR": root.path]).currentSessions().map(\.id), ["claude-code:custom-home"])
+    }
+
     func testDerivesSessionFromProjectsDir() throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         let projDir = root.appendingPathComponent("projects/-Users-me-demo")

@@ -10,7 +10,7 @@ let parentPID = ProcessInfo.processInfo.environment["AGENT_TRAFFIC_LIGHTS_PARENT
     .flatMap(Int32.init)
 let claudeHooksEnabled = ProcessInfo.processInfo.environment["AGENT_TRAFFIC_LIGHTS_CLAUDE_HOOKS_ENABLED"] == "1"
 
-var sources: [any SessionSource] = []
+var sources: [any SessionSource] = [CodexHookSource()]
 if claudeHooksEnabled {
     sources.append(ClaudeCodeHookSource())
 }

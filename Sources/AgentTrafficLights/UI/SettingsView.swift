@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus?
     @State private var notificationTestMessage: String?
     @State private var claudeHooksInstalled = false
+    @State private var claudeHooksPresent = false
     @State private var claudeHookMessage: String?
     @State private var copilotHookStatus: CopilotHookInstallStatus = .notInstalled
     @State private var copilotHookMessage: String?
@@ -218,10 +219,10 @@ struct SettingsView: View {
                 SettingsDivider()
 
                 SettingsRow(
-                    title: claudeHooksInstalled ? "Hooks installed" : "Hooks not installed",
+                    title: claudeHooksInstalled ? "Hooks installed" : (claudeHooksPresent ? "Hooks need reinstalling" : "Hooks not installed"),
                     subtitle: claudeHooksInstalled
                         ? "Agent Light hook entries are present in Claude Code settings."
-                        : "Install hook entries before using Hooks mode for precise Claude Code status.",
+                        : "Install or repair hooks at the current app path before using Hooks mode.",
                     systemImage: claudeHooksInstalled ? "checkmark.seal" : "link.badge.plus"
                 ) {
                     HStack(spacing: 8) {
@@ -237,7 +238,7 @@ struct SettingsView: View {
                         } label: {
                             Label("Remove", systemImage: "minus")
                         }
-                        .disabled(!claudeHooksInstalled)
+                        .disabled(!claudeHooksPresent)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -266,9 +267,11 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 300)
+            .frame(width: 360)
 
             switch selectedAgent {
+            case .codex:
+                CodexHooksView()
             case .claudeCode:
                 claudeCodePane
             case .copilotCLI:
@@ -673,7 +676,8 @@ struct SettingsView: View {
     }
 
     private func refreshClaudeHookStatus() {
-        claudeHooksInstalled = ClaudeHookInstaller.isInstalled()
+        claudeHooksInstalled = ClaudeHookInstaller.isInstalled(hookBinaryURL: claudeHookBinaryURL)
+        claudeHooksPresent = ClaudeHookInstaller.containsHooks()
     }
 
     private func installClaudeHooks() {
@@ -681,11 +685,12 @@ struct SettingsView: View {
             try ClaudeHookInstaller.install(hookBinaryURL: claudeHookBinaryURL)
             settings.claudeCodeStatusMode = .hooks
             claudeHooksInstalled = true
+            claudeHooksPresent = true
             claudeHookMessage = "Claude Code hooks are enabled. New Claude sessions will report precise permission, input, and completion events to Agent Light."
         } catch {
             settings.claudeCodeStatusMode = .automatic
             refreshClaudeHookStatus()
-            claudeHookMessage = "Agent Light could not update ~/.claude/settings.json: \(error.localizedDescription)"
+            claudeHookMessage = "Agent Light could not update \(ClaudeHookInstaller.defaultSettingsURL.path): \(error.localizedDescription)"
         }
     }
 
@@ -694,10 +699,11 @@ struct SettingsView: View {
             try ClaudeHookInstaller.remove()
             settings.claudeCodeStatusMode = .automatic
             claudeHooksInstalled = false
+            claudeHooksPresent = false
             claudeHookMessage = "Claude Code hooks were removed. Agent Light is using default transcript detection."
         } catch {
             refreshClaudeHookStatus()
-            claudeHookMessage = "Agent Light could not update ~/.claude/settings.json: \(error.localizedDescription)"
+            claudeHookMessage = "Agent Light could not update \(ClaudeHookInstaller.defaultSettingsURL.path): \(error.localizedDescription)"
         }
     }
 

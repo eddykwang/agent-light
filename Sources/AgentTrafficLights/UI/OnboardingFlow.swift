@@ -99,7 +99,7 @@ struct ClaudeCodeHookChoiceResolution: Equatable {
             return ClaudeCodeHookChoiceResolution(
                 mode: .automatic,
                 hooksInstalled: false,
-                message: "Agent Light could not update ~/.claude/settings.json: \(reason)"
+                message: "Agent Light could not update \(ClaudeHookInstaller.defaultSettingsURL.path): \(reason)"
             )
         }
     }

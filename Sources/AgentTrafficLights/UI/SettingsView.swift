@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 @preconcurrency import UserNotifications
 
 struct SettingsView: View {
-    private static let githubURL = URL(string: "https://github.com/eddywang/agent-light")!
+    private static let githubURL = URL(string: "https://github.com/eddykwang/agent-light")!
 
     @ObservedObject var settings: AppSettings
     @State private var selectedTab: SettingsTab

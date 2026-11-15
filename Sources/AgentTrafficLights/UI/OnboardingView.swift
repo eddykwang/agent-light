@@ -685,7 +685,7 @@ private struct HookInstallPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("For Claude Code users: install hooks")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("Agent Light will add local Claude Code hook entries to ~/.claude/settings.json. If you do not use Claude Code, choose Transcript instead.")
+                    Text("Agent Light will add local Claude Code hook entries to \(ClaudeHookInstaller.defaultSettingsURL.path). If you do not use Claude Code, choose Transcript instead.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -29,7 +29,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertEqual(failed.mode, .automatic)
         XCTAssertFalse(failed.hooksInstalled)
         XCTAssertTrue(failed.message.contains("Permission denied"))
-        XCTAssertTrue(failed.message.contains("~/.claude/settings.json"))
+        XCTAssertTrue(failed.message.contains(ClaudeHookInstaller.defaultSettingsURL.path))
     }
 
     func testCopilotHookOutcomeResolutionReflectsInstallResult() {
